@@ -123,6 +123,9 @@ app.post('/sync/push', async (req, res) => {
     try {
       // Сначала пробуем RPC функцию (быстрее - 1 запрос вместо 2)
       try {
+        console.log(`[SUPA] Attempting RPC upsert with ${payload.length} entries...`);
+        console.log(`[SUPA] Sample entry:`, JSON.stringify(payload[0]));
+        
         const rpcResp = await axios.post(
           `${SUPABASE_URL}/rest/v1/rpc/upsert_cache_entries`,
           { entries: payload },
@@ -136,6 +139,9 @@ app.post('/sync/push', async (req, res) => {
             timeout: 30000
           }
         );
+
+        console.log(`[SUPA] RPC response status: ${rpcResp.status}`);
+        console.log(`[SUPA] RPC response data:`, JSON.stringify(rpcResp.data));
 
         if (rpcResp.status >= 200 && rpcResp.status < 300) {
           const result = rpcResp.data;

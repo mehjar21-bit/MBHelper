@@ -58,7 +58,8 @@ export const syncCacheToServer = async () => {
       })
       .map(([key, value]) => ({
         key,
-        ...value
+        count: value.count,
+        timestamp: value.timestamp
       }));
 
     if (dataToSync.length === 0) {
@@ -79,6 +80,9 @@ export const syncCacheToServer = async () => {
     // Отправляем батчами
     for (let i = 0; i < dataToSync.length; i += SYNC_BATCH_SIZE) {
       const batch = dataToSync.slice(i, i + SYNC_BATCH_SIZE);
+      
+      // ДЕБАГ: Выводим реальную структуру данных
+      log(`DEBUG: Sending batch structure:`, JSON.stringify(batch.slice(0, 2), null, 2));
       
       try {
         log(`→ PUSH batch ${Math.floor(i / SYNC_BATCH_SIZE) + 1}: ${batch.length} entries to ${SYNC_SERVER_URL}`);
