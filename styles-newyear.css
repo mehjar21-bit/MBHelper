@@ -208,15 +208,3 @@ body.style-1 input[type="range"]::-webkit-slider-runnable-track {
   0%, 100% { opacity: 1; }
   50% { opacity: 0.6; }
 }
-
-/* Boosty ссылка новогодняя */
-#boosty-link {
-  background: linear-gradient(135deg, #FFD700 0%, #FFA500 100%) !important;
-  border: 2px solid #DC143C !important;
-  box-shadow: 0 0 15px rgba(255, 215, 0, 0.6) !important;
-}
-
-#boosty-link:hover {
-  background: linear-gradient(135deg, #FFA500 0%, #FF8C00 100%) !important;
-  box-shadow: 0 0 25px rgba(255, 215, 0, 0.9) !important;
-}
