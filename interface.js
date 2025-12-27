@@ -130,7 +130,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const wishlistWarningValueEl = document.getElementById('wishlistWarningValue');
   const alwaysShowWishlistEl = document.getElementById('alwaysShowWishlist');
   const alwaysShowOwnersEl = document.getElementById('alwaysShowOwners');
-  const mineHitCountEl = document.getElementById('mineHitCount');
+
   const saveBtn = document.getElementById('save');
   const saveSpinner = document.getElementById('saveSpinner');
   const clearCacheBtn = document.getElementById('clearCache');
@@ -146,19 +146,18 @@ document.addEventListener('DOMContentLoaded', () => {
   const styleButtons = document.querySelectorAll('.style-btn');
   const contextCheckboxes = document.querySelectorAll('#contextSettingsGrid input[type="checkbox"]');
 
-  if (!extensionEnabledEl || !wishlistStyleEl || !wishlistWarningEl || !wishlistWarningValueEl || !alwaysShowWishlistEl || !alwaysShowOwnersEl || !mineHitCountEl || !saveBtn || !saveSpinner || !clearCacheBtn || !clearCacheSpinner || !syncCacheBtn || !syncCacheSpinner || !exportCacheBtn || !importCacheInput || !importCacheBtn || !savedMessageEl || !syncMessageEl || styleButtons.length === 0 || !document.getElementById('saveIcon') || !document.getElementById('saveText')) {
+  if (!extensionEnabledEl || !wishlistStyleEl || !wishlistWarningEl || !wishlistWarningValueEl || !alwaysShowWishlistEl || !alwaysShowOwnersEl || !saveBtn || !saveSpinner || !clearCacheBtn || !clearCacheSpinner || !syncCacheBtn || !syncCacheSpinner || !exportCacheBtn || !importCacheInput || !importCacheBtn || !savedMessageEl || !syncMessageEl || styleButtons.length === 0 || !document.getElementById('saveIcon') || !document.getElementById('saveText')) {
     logError('One or more required DOM elements not found!');
     return;
   }
 
-  const settingsKeys = ['extensionEnabled', 'wishlistStyle', 'wishlistWarning', 'alwaysShowWishlist', 'alwaysShowOwners', 'userContextStates', 'mineHitCount'];
+  const settingsKeys = ['extensionEnabled', 'wishlistStyle', 'wishlistWarning', 'alwaysShowWishlist', 'alwaysShowOwners', 'userContextStates'];
   chrome.storage.sync.get(settingsKeys, data => {
     const savedEnabled = data.extensionEnabled !== undefined ? data.extensionEnabled : true;
     const savedStyle = data.wishlistStyle || 'style-1';
     const savedWarning = data.wishlistWarning !== undefined ? data.wishlistWarning : 10;
     const savedAlwaysWishlist = data.alwaysShowWishlist || false;
     const savedAlwaysOwners = data.alwaysShowOwners || false;
-    const savedMineHitCount = data.mineHitCount !== undefined ? data.mineHitCount : 100;
     const savedContextStates = data.userContextStates || {};
 
     extensionEnabledEl.checked = savedEnabled;
@@ -167,7 +166,6 @@ document.addEventListener('DOMContentLoaded', () => {
     wishlistWarningValueEl.textContent = savedWarning;
     alwaysShowWishlistEl.checked = savedAlwaysWishlist;
     alwaysShowOwnersEl.checked = savedAlwaysOwners;
-    mineHitCountEl.value = savedMineHitCount;
     body.className = savedStyle;
     updateSliderTrack(savedStyle, savedWarning, wishlistWarningEl.min, wishlistWarningEl.max);
 
@@ -220,19 +218,10 @@ document.addEventListener('DOMContentLoaded', () => {
   saveBtn.addEventListener('click', () => {
     const isEnabled = extensionEnabledEl.checked;
     const wishlistWarning = Number(wishlistWarningEl.value);
-    const mineHitCount = Number(mineHitCountEl.value);
 
     if (isNaN(wishlistWarning) || wishlistWarning < 0) {
       alert('Порог желающих должен быть неотрицательным числом.');
       return;
-    }
-    if (isNaN(mineHitCount) || mineHitCount < 1) {
-        alert('Количество ударов шахты должно быть числом больше нуля.');
-        return;
-    }
-    if (mineHitCount > 1000) {
-        alert('Установлено слишком большое количество ударов (макс. 1000).');
-        return;
     }
 
     const saveIcon = document.getElementById('saveIcon');
@@ -252,8 +241,7 @@ document.addEventListener('DOMContentLoaded', () => {
       wishlistStyle: wishlistStyleEl.value,
       wishlistWarning: wishlistWarning,
       alwaysShowWishlist: alwaysShowWishlistEl.checked,
-      alwaysShowOwners: alwaysShowOwnersEl.checked,
-      mineHitCount: mineHitCount
+      alwaysShowOwners: alwaysShowOwnersEl.checked
     };
 
     const userContextStates = {};

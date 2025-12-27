@@ -141,64 +141,6 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         return true;
       }
 
-      
-    if (message.action === 'mineHit') {
-        if (!message.csrfToken) {
-            logError('CSRF token is missing for mineHit');
-            sendResponse({ success: false, error: 'CSRF token is missing' });
-            return false;
-        }
-        if (!message.url) {
-             logError('URL is missing for mineHit');
-             sendResponse({ success: false, error: 'URL is missing' });
-             return false;
-        }
-
-        fetchWithTimeout(message.url, {
-            method: 'POST',
-            headers: {
-                'X-CSRF-Token': message.csrfToken,
-                'X-Requested-With': 'XMLHttpRequest',
-                'Accept': 'application/json, text/plain, */*'
-            },
-            body: null
-        })
-        .then(async response => {
-            let responseData = null;
-            try {
-                responseData = await response.json();
-            } catch (e) {
-                 if (!response.ok) {
-                     try {
-                          const textError = await response.text();
-                           sendResponse({ success: false, error: textError || `HTTP error! status: ${response.status}`, status: response.status });
-                     } catch (readError) {
-                          sendResponse({ success: false, error: `HTTP error! status: ${response.status}`, status: response.status });
-                     }
-                     return;
-                 } else {
-                      log(`Mine hit successful (${response.status}), but no JSON data received.`);
-                      responseData = { message: 'Success (No JSON Data)'};
-                 }
-            }
-
-            if (!response.ok) {
-                logWarn(`Mine hit failed (${response.status}) with JSON response:`, responseData);
-                const errorMsg = responseData?.error || responseData?.message || `HTTP error! status: ${response.status}`;
-                sendResponse({ success: false, error: errorMsg, status: response.status, data: responseData });
-            } else {
-                 log(`Mine hit successful (${response.status}). Data:`, responseData);
-                 sendResponse({ success: true, data: responseData });
-            }
-        })
-        .catch(error => {
-            logError(`Critical error during mineHit fetch to ${message.url}:`, error);
-            sendResponse({ success: false, error: error.message || 'Network or timeout error during mine hit' });
-        });
-
-        return true;
-    }
-
     if (message.action === 'triggerSync') {
         log('Manual sync triggered from interface');
         

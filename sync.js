@@ -4,6 +4,31 @@ const SYNC_BATCH_SIZE = 100; // Отправляем по 100 записей з�
 const SYNC_INTERVAL = 30 * 60 * 1000; // Синхронизация каждые 30 минут
 
 /**
+ * Отправляет конкретные записи на сервер (для фонового обновления)
+ */
+export const pushToSync = async (entries) => {
+  if (!isExtensionContextValid()) return;
+  if (!entries || entries.length === 0) return;
+
+  try {
+    const response = await fetch(`${SYNC_SERVER_URL}/sync/push`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ entries })
+    });
+
+    if (!response.ok) {
+      throw new Error(`Push failed: ${response.status} ${response.statusText}`);
+    }
+
+    const result = await response.json();
+    log(`Pushed ${entries.length} entries to server:`, result);
+  } catch (error) {
+    logError('Failed to push entries to sync server:', error);
+  }
+};
+
+/**
  * Отправляет свежие данные на сервер
  */
 export const syncCacheToServer = async () => {

@@ -16,9 +16,7 @@ export const initialContextState = {
   marketRequestCreate: { wishlist: false, owners: false },
   marketRequestView: { wishlist: true, owners: false }, 
   deckView: { wishlist: false, owners: false },
-  auctions: { wishlist: false, owners: false },
-  quizPage: {},
-  minePage: {}
+  auctions: { wishlist: false, owners: false }
 };
 
 export const contextsSelectors = {
@@ -52,8 +50,6 @@ export const getCurrentContext = () => {
     '/market/create': 'marketCreate',
     '/decks/create': 'deckCreate',
     '/decks/\\d+': 'deckView',
-    '/quiz': 'quizPage',
-    '/mine': 'minePage',
     '/auctions': 'auctions',
     '/auctions/\\d+': 'auctions',
     '/market/requests/create': 'marketRequestCreate',

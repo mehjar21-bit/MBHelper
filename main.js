@@ -6,7 +6,6 @@ import { addExtensionSettingsButton } from './domUtils.js';
 import { processCards } from './cardProcessor.js';
 import { initUserCards, handleMarketCreatePage, initStatsButtons, initPackPage } from './contextHandlers.js';
 import { setupObserver } from './observer.js';
-import { startMiningProcess } from './mineHandler.js';
 
 export let contextState = {};
 let currentObserver = null;
@@ -20,7 +19,6 @@ const cleanupExtensionFeatures = () => {
         log('Observer disconnected.');
     }
 
-    document.getElementById('auto-mine-counter')?.remove();
     document.querySelector('.wishlist-toggle-btn')?.remove();
     const statButtonSelectors = [
         '.tradeOffer-wishlist-btn', '.tradeOffer-owners-btn',
@@ -47,90 +45,10 @@ const cleanupExtensionFeatures = () => {
 };
 
 const initializeObserver = (context) => {
-     if (context !== 'pack' && context !== 'marketRequestView' && context !== 'minePage') {
+     if (context !== 'pack' && context !== 'marketRequestView') {
          setupObserver(context, obs => { currentObserver = obs; });
      }
 }
-
-
-const initMinePage = async () => {
-    const mineButtonSelector = '.main-mine__game-tap';
-    const mineButton = await waitForElements(mineButtonSelector, 5000, true);
-    const counterId = 'auto-mine-counter';
-
-    if (!mineButton) {
-        logWarn(`Mine button ('${mineButtonSelector}') not found after waiting.`);
-        return;
-    }
-     if (document.getElementById(counterId)) {
-        logWarn(`Mine counter ('#${counterId}') already exists.`);
-        return; 
-    }
-
-    log('Initializing mine page (Burst Mode)...');
-
-    const settings = await getSettings();
-    const hitsCount = settings.mineHitCount;
-
-    const counterElement = document.createElement('div');
-    counterElement.id = counterId;
-    counterElement.textContent = `Удар x${hitsCount}`;
-    counterElement.style.textAlign = 'center';
-    counterElement.style.marginTop = '10px';
-    counterElement.style.fontSize = '14px';
-    counterElement.style.fontWeight = 'bold';
-    counterElement.style.color = '#FFF';
-    counterElement.style.textShadow = '1px 1px 2px black';
-    counterElement.style.minHeight = '1.2em'; 
-
-    mineButton.parentNode.insertBefore(counterElement, mineButton.nextSibling);
-    log('Mine counter element added.');
-
-    let isMining = false;
-
-    const updateButtonState = (disabled) => {
-        mineButton.disabled = disabled;
-        mineButton.style.opacity = disabled ? '0.6' : '1';
-        mineButton.style.cursor = disabled ? 'wait' : 'pointer';
-        isMining = disabled;
-    };
-
-    const updateCounter = (current, max, message = null) => {
-        if (message) {
-            counterElement.textContent = message;
-        } else {
-            counterElement.textContent = `Статус: ${current}/${max}`;
-        }
-    };
-
-    mineButton.addEventListener('click', async (event) => {
-        event.preventDefault();
-        event.stopPropagation();
-
-        if (isMining) { logWarn('Mining process already running.'); return; }
-        if (!isExtensionContextValid()) { alert('Контекст расширения недействителен.'); return; }
-        if (!csrfToken) { alert('CSRF токен не найден.'); logError('Mining start blocked: CSRF token is null or empty.'); return; }
-
-        const currentSettings = await getSettings();
-        const currentHitsCount = currentSettings.mineHitCount;
-
-        updateButtonState(true);
-        updateCounter(0, currentHitsCount, `Отправка ${currentHitsCount} ударов...`);
-        log('Starting mining burst from button click...');
-
-        try {
-            await startMiningProcess(updateButtonState, updateCounter);
-            log('startMiningProcess (burst) finished.');
-        } catch (error) {
-            logError('Critical error during startMiningProcess (burst) execution:', error);
-            updateButtonState(false);
-            updateCounter(0, currentHitsCount, '❌ Критическая ошибка');
-            alert(`Произошла критическая ошибка во время добычи: ${error.message || 'См. консоль.'}`);
-        }
-    });
-
-    log('Mine button click handler (burst mode) set.');
-};
 
 
 const initPage = async () => {
@@ -168,9 +86,8 @@ const initPage = async () => {
         return;
     }
 
-    if (context !== 'minePage') {
-        log(`Initializing context: ${context}`);
-        let effectiveInitialContextState = {};
+    log(`Initializing context: ${context}`);
+    let effectiveInitialContextState = {};
         try {
             const { userContextStates } = await chrome.storage.sync.get(['userContextStates']);
             const savedStates = userContextStates || {};
@@ -240,9 +157,6 @@ const initPage = async () => {
              logWarn(`Initialized ${context} with default state due to storage error.`);
              log(`Current global contextState after storage error:`, contextState);
         }
-    } else {
-        log(`Initialization for context '${context}' finished (added buttons/elements).`);
-    }
 };
 
 if (document.readyState === 'loading') {
@@ -262,7 +176,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         getSettings().then(settings => {
             if (settings.extensionEnabled) {
                 const context = getCurrentContext();
-                if (context && contextsSelectors[context]  && context !== 'minePage') {
+                if (context && contextsSelectors[context]) {
                    const oldLabels = document.querySelectorAll('.wishlist-warning, .owners-count');
                    oldLabels.forEach(label => label.remove());
                    log(`Removed ${oldLabels.length} old labels.`);
@@ -323,7 +237,7 @@ chrome.storage.onChanged.addListener(async (changes, namespace) => {
             }
         } else {
             const changedKeys = Object.keys(changes);
-            const relevantKeys = ['wishlistStyle', 'wishlistWarning', 'alwaysShowWishlist', 'alwaysShowOwners', 'userContextStates', 'mineHitCount'];
+            const relevantKeys = ['wishlistStyle', 'wishlistWarning', 'alwaysShowWishlist', 'alwaysShowOwners', 'userContextStates'];
             const otherSettingsChanged = changedKeys.some(key => relevantKeys.includes(key));
 
             if (otherSettingsChanged) {

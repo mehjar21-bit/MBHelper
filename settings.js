@@ -5,8 +5,7 @@ const defaultSettings = {
   wishlistWarning: 10,
   wishlistStyle: 'style-1',
   alwaysShowWishlist: false,
-  alwaysShowOwners: false,
-  mineHitCount: 100
+  alwaysShowOwners: false
 };
 
 export const getSettings = async () => {

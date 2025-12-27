@@ -64,11 +64,20 @@ export const processCards = async (context, settings) => {
 
       if (showWishlist) {
           tasks.push(
-              getWishlistCount(cardId).then(count => {
+              getWishlistCount(cardId).then(data => {
                   if (!item.isConnected) return;
+                  const count = data?.count ?? 0;
+                  const isOld = data?.isOld ?? false;
                   const position = (showOwners && context !== 'userCards') ? 'top' : 'top';
-                  addTextLabel(item, 'wishlist-warning', `${count}`, `Хотят: ${count}`, position, 'wishlist', {
-                      color: count >= settings.wishlistWarning ? '#FFA500' : '#00FF00'
+                  
+                  // Добавляем индикатор для старых данных
+                  const displayText = isOld ? `${count} ⏱️` : `${count}`;
+                  const age = isOld ? Math.floor((Date.now() - data.timestamp) / (24 * 60 * 60 * 1000)) : 0;
+                  const tooltipText = isOld ? `Хотят: ${count} (данные ${age} дн. назад)` : `Хотят: ${count}`;
+                  
+                  addTextLabel(item, 'wishlist-warning', displayText, tooltipText, position, 'wishlist', {
+                      color: count >= settings.wishlistWarning ? '#FFA500' : '#00FF00',
+                      opacity: isOld ? 0.8 : 1
                   }, context);
               }).catch(error => logError(`Error getting wishlist count for card ${cardId} in ${context}:`, error))
           );
@@ -76,10 +85,20 @@ export const processCards = async (context, settings) => {
 
       if (showOwners) {
           tasks.push(
-              getOwnersCount(cardId).then(count => {
+              getOwnersCount(cardId).then(data => {
                   if (!item.isConnected) return;
+                  const count = data?.count ?? 0;
+                  const isOld = data?.isOld ?? false;
                   const position = showWishlist ? 'middle' : 'top';
-                  addTextLabel(item, 'owners-count', `${count}`, `ладеют: ${count}`, position, 'owners', {}, context);
+                  
+                  // Добавляем индикатор для старых данных
+                  const displayText = isOld ? `${count} ⏱️` : `${count}`;
+                  const age = isOld ? Math.floor((Date.now() - data.timestamp) / (24 * 60 * 60 * 1000)) : 0;
+                  const tooltipText = isOld ? `Владеют: ${count} (данные ${age} дн. назад)` : `Владеют: ${count}`;
+                  
+                  addTextLabel(item, 'owners-count', displayText, tooltipText, position, 'owners', {
+                      opacity: isOld ? 0.8 : 1
+                  }, context);
               }).catch(error => logError(`Error getting owners count for card ${cardId} in ${context}:`, error))
           );
       }

@@ -41,8 +41,19 @@ const getUserCount = async (type, cardId, retries = 2) => {
 
   try {
     const cached = await chrome.storage.local.get([cacheKey]).then(r => r[cacheKey]);
-    if (cached && Date.now() - cached.timestamp < (cached.ttl || 7 * 24 * 60 * 60 * 1000)) { // TTL из кэша или 7 дней по умолчанию
-      return cached.count;
+    if (cached) {
+      const age = Date.now() - cached.timestamp;
+      const isOld = age > 7 * 24 * 60 * 60 * 1000; // Старше 7 дней
+      
+      // Если данные старые - запускаем фоновое обновление
+      if (isOld) {
+        log(`Cache is old (${Math.floor(age / (24 * 60 * 60 * 1000))} days) for ${cacheKey}, scheduling background refresh`);
+        // Фоновое обновление без ожидания
+        setTimeout(() => backgroundRefresh(type, cardId, cacheKey), 1000);
+      }
+      
+      // Возвращаем кэшированные данные с метаданными
+      return { count: cached.count, timestamp: cached.timestamp, isOld };
     }
   } catch (error) {
       logError(`Error accessing local storage for cache key ${cacheKey}:`, error);
@@ -137,13 +148,14 @@ const getUserCount = async (type, cardId, retries = 2) => {
             }
         }
 
+      const timestamp = Date.now();
       if (isExtensionContextValid() && (total > 0 || (type === 'wishlist' && total === 0))) {
           let ttl = 7 * 24 * 60 * 60 * 1000; // 7 дней по умолчанию
           if (type === 'wishlist' && total === 0) {
               ttl = 24 * 60 * 60 * 1000; // 1 день для wishlist с 0
           }
           try {
-            await chrome.storage.local.set({ [cacheKey]: { count: total, timestamp: Date.now(), ttl } });
+            await chrome.storage.local.set({ [cacheKey]: { count: total, timestamp, ttl } });
             log(`Fetched (Optimized) and cached ${type} count for card ${cardId}: ${total} (TTL: ${ttl / (24 * 60 * 60 * 1000)} days)`);
           } catch (storageError) {
             logError(`Error setting local storage for cache key ${cacheKey}:`, storageError);
@@ -152,7 +164,7 @@ const getUserCount = async (type, cardId, retries = 2) => {
           logWarn(`Fetch resulted in invalid count (${total}) for ${type}, card ${cardId}. Not caching.`);
           total = 0; 
       }
-      return total; 
+      return { count: total, timestamp, isOld: false }; 
 
     } catch (error) {
         logError(`Unhandled error during OPTIMIZED ${type} count fetch for card ${cardId}:`, error);
@@ -162,7 +174,7 @@ const getUserCount = async (type, cardId, retries = 2) => {
             pendingRequests.delete(cacheKey);
             return await getUserCount(type, cardId, retries - 1); 
         }
-        return 0; 
+        return { count: 0, timestamp: Date.now(), isOld: false }; 
     } finally {
       activeRequests--;
       pendingRequests.delete(cacheKey);
@@ -171,6 +183,36 @@ const getUserCount = async (type, cardId, retries = 2) => {
 
   pendingRequests.set(cacheKey, requestPromise);
   return requestPromise;
+};
+
+// Фоновое обновление данных
+const backgroundRefresh = async (type, cardId, cacheKey) => {
+  if (!isExtensionContextValid()) return;
+  
+  try {
+    log(`Background refresh started for ${cacheKey}`);
+    
+    // Удаляем из кэша чтобы getUserCount сделал реальный запрос
+    const oldData = await chrome.storage.local.get([cacheKey]).then(r => r[cacheKey]);
+    await chrome.storage.local.remove([cacheKey]);
+    
+    // Делаем реальный запрос
+    const result = await getUserCount(type, cardId, 0);
+    
+    // Отправляем обновленные данные на сервер синхронизации
+    if (result && typeof result === 'object' && result.count !== undefined) {
+      const timestamp = Date.now();
+      try {
+        const { pushToSync } = await import('./sync.js');
+        await pushToSync([{ key: cacheKey, count: result.count, timestamp }]);
+        log(`Background refresh completed and synced for ${cacheKey}: ${result.count}`);
+      } catch (syncError) {
+        logWarn(`Could not sync background refresh for ${cacheKey}:`, syncError);
+      }
+    }
+  } catch (error) {
+    logError(`Background refresh failed for ${cacheKey}:`, error);
+  }
 };
 
 export const getWishlistCount = cardId => getUserCount('wishlist', cardId);

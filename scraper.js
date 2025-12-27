@@ -5,6 +5,8 @@ const axios = require('axios');
 const { HttpsProxyAgent } = require('https-proxy-agent');
 
 const PROXY = 'http://Kv9UeH:wL2xbe@147.45.81.14:8000';
+const SYNC_SERVER_URL = 'https://mbhelper-production.up.railway.app';
+const BATCH_SIZE = 100; // Отправляем по 100 записей за раз
 
 const MAX_ID = 328320;
 const PROGRESS_FILE = 'scraper_progress.json';
@@ -56,6 +58,33 @@ async function getCount(page, cardId, type) {
     }
 }
 
+// Функция для отправки данных на сервер батчами
+async function pushToServer(entries) {
+    try {
+        console.log(`→ Pushing ${entries.length} entries to server...`);
+        const response = await axios.post(`${SYNC_SERVER_URL}/sync/push`, {
+            entries: entries
+        }, {
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            timeout: 30000
+        });
+
+        if (response.status >= 200 && response.status < 300) {
+            const result = response.data;
+            console.log(`✔ Push OK: updated=${result.processed || 0}, skipped=${result.skipped || 0}`);
+            return true;
+        } else {
+            console.error(`✘ Push failed: ${response.status}`, response.data);
+            return false;
+        }
+    } catch (error) {
+        console.error('✘ Error pushing to server:', error.message);
+        return false;
+    }
+}
+
 async function scrape() {
     let data = {};
     let startId = 1;
@@ -82,10 +111,8 @@ async function scrape() {
 
     const cookies = await page.cookies();
     const csrf = await page.$eval('meta[name="csrf-token"]', el => el.content);
-    // Do not close browser, use page for requests
 
-    // Use axios
-    // const fetch = require('node-fetch');
+    let batchBuffer = []; // Буфер для батчевой отправки
 
     for (let id = startId; id <= MAX_ID; id++) {
         try {
@@ -93,24 +120,49 @@ async function scrape() {
             const owners = await getCount(page, id, 'owners');
             const wishlist = await getCount(page, id, 'wishlist');
             const timestamp = Date.now();
+            
             data[`owners_${id}`] = { count: owners, timestamp };
             data[`wishlist_${id}`] = { count: wishlist, timestamp };
+            
+            // Добавляем в батч для отправки
+            batchBuffer.push(
+                { key: `owners_${id}`, count: owners, timestamp },
+                { key: `wishlist_${id}`, count: wishlist, timestamp }
+            );
+            
             console.log(`Card ${id}: owners=${owners}, wishlist=${wishlist}`);
         } catch (error) {
             console.error(`Error for card ${id}:`, error);
             const timestamp = Date.now();
             data[`owners_${id}`] = { count: 0, timestamp };
             data[`wishlist_${id}`] = { count: 0, timestamp };
+            
+            batchBuffer.push(
+                { key: `owners_${id}`, count: 0, timestamp },
+                { key: `wishlist_${id}`, count: 0, timestamp }
+            );
         }
 
-        // Save progress every 10 cards
+        // Отправляем батч на сервер если набралось достаточно данных
+        if (batchBuffer.length >= BATCH_SIZE) {
+            await pushToServer(batchBuffer);
+            batchBuffer = [];
+        }
+
+        // Сохраняем прогресс локально каждые 10 карт
         if (id % 10 === 0) {
             fs.writeFileSync(PROGRESS_FILE, JSON.stringify(data, null, 2));
             console.log(`Progress saved at card ${id}`);
         }
 
-        // Delay to avoid rate limits
+        // Задержка для избежания rate limit
         await new Promise(r => setTimeout(r, 50 + Math.random() * 500));
+    }
+
+    // Отправляем оставшиеся данные
+    if (batchBuffer.length > 0) {
+        console.log('Pushing remaining entries...');
+        await pushToServer(batchBuffer);
     }
 
     fs.writeFileSync(OUTPUT_FILE, JSON.stringify(data, null, 2));
