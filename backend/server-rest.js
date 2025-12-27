@@ -121,7 +121,47 @@ app.post('/sync/push', async (req, res) => {
     }
 
     try {
-      // Шаг 1: Получаем существующие записи для сравнения timestamp
+      // Сначала пробуем RPC функцию (быстрее - 1 запрос вместо 2)
+      try {
+        const rpcResp = await axios.post(
+          `${SUPABASE_URL}/rest/v1/rpc/upsert_cache_entries`,
+          { entries: payload },
+          {
+            headers: {
+              'apikey': SUPABASE_KEY,
+              'Authorization': `Bearer ${SUPABASE_KEY}`,
+              'Content-Type': 'application/json'
+            },
+            validateStatus: () => true,
+            timeout: 30000
+          }
+        );
+
+        if (rpcResp.status >= 200 && rpcResp.status < 300) {
+          const result = rpcResp.data;
+          const updated = result?.updated || 0;
+          const skipped = result?.skipped || 0;
+          
+          console.log(`[SUPA] RPC upsert: updated=${updated}, skipped=${skipped}`);
+          return res.json({ 
+            success: true, 
+            processed: updated,
+            skipped: skipped,
+            total: payload.length,
+            message: `Updated ${updated}, skipped ${skipped} (older) of ${payload.length} entries`
+          });
+        }
+        
+        // RPC не существует или ошибка - переходим на fallback
+        console.warn(`[SUPA] RPC failed (${rpcResp.status}), using fallback method`);
+      } catch (rpcErr) {
+        console.warn(`[SUPA] RPC error: ${rpcErr.message}, using fallback`);
+      }
+
+      // Fallback: двухэтапный процесс (GET + POST)
+      console.log(`[SUPA] Fallback: checking ${payload.length} entries...`);
+      
+      // Шаг 1: Получаем существующие timestamp'ы
       const keys = payload.map(e => e.key);
       const keysFilter = keys.map(k => `"${k}"`).join(',');
       
@@ -134,44 +174,42 @@ app.post('/sync/push', async (req, res) => {
               'apikey': SUPABASE_KEY,
               'Authorization': `Bearer ${SUPABASE_KEY}`
             },
-            validateStatus: () => true,
             timeout: 10000
           }
         );
 
-        if (checkResp.status >= 200 && checkResp.status < 300 && Array.isArray(checkResp.data)) {
+        if (Array.isArray(checkResp.data)) {
           checkResp.data.forEach(entry => {
             existingEntries[entry.key] = entry.timestamp;
           });
           console.log(`[SUPA] Found ${Object.keys(existingEntries).length} existing entries`);
         }
       } catch (checkErr) {
-        console.warn(`[SUPA] Failed to check existing entries: ${checkErr.message}`);
+        console.warn(`[SUPA] Failed to check existing: ${checkErr.message}`);
       }
 
-      // Шаг 2: Фильтруем - оставляем только те, что свежее или новые
+      // Шаг 2: Фильтруем по timestamp
       const toUpsert = payload.filter(entry => {
         const existingTs = existingEntries[entry.key];
-        // Вставляем если: записи нет ИЛИ наши данные свежее
         return !existingTs || existingTs < entry.timestamp;
       });
 
       const skipped = payload.length - toUpsert.length;
       
       if (toUpsert.length === 0) {
-        console.log(`[SUPA] All ${payload.length} entries are older than server data, skipping`);
+        console.log(`[SUPA] All ${payload.length} entries are older, skipped`);
         return res.json({ 
           success: true, 
           processed: 0,
           skipped: skipped,
           total: payload.length,
-          message: `All entries skipped (server data is fresher)`
+          message: `All entries skipped (server data fresher)`
         });
       }
 
-      console.log(`[SUPA] Upserting ${toUpsert.length} entries (${skipped} skipped as older)`);
+      console.log(`[SUPA] Upserting ${toUpsert.length} entries (${skipped} skipped)`);
 
-      // Шаг 3: Batch upsert только свежих записей
+      // Шаг 3: Batch upsert
       const supaResp = await axios.post(
         `${SUPABASE_URL}/rest/v1/cache_entries`,
         toUpsert,
@@ -182,29 +220,22 @@ app.post('/sync/push', async (req, res) => {
             'Content-Type': 'application/json',
             'Prefer': 'resolution=merge-duplicates'
           },
-          validateStatus: () => true,
           timeout: 30000
         }
       );
 
       if (supaResp.status >= 200 && supaResp.status < 300) {
-        console.log(`[SUPA] Upsert OK: ${toUpsert.length} entries updated`);
+        console.log(`[SUPA] Fallback upsert OK: ${toUpsert.length} entries`);
         return res.json({ 
           success: true, 
           processed: toUpsert.length,
           skipped: skipped,
           total: payload.length,
-          message: `Updated ${toUpsert.length}, skipped ${skipped} (older) of ${payload.length} entries`
+          message: `Updated ${toUpsert.length}, skipped ${skipped} (older) of ${payload.length}`
         });
       }
 
-      console.error('Supabase upsert failed:', supaResp.status, supaResp.data);
-      return res.status(502).json({ 
-        success: false, 
-        error: 'Upsert failed',
-        details: supaResp.data,
-        status: supaResp.status
-      });
+      throw new Error(`Upsert failed: ${supaResp.status}`);
     } catch (err) {
       console.error('Error in push:', err.message);
       return res.status(500).json({ success: false, error: err.message });

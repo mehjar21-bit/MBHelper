@@ -20,27 +20,43 @@ export const syncCacheToServer = async () => {
       return;
     }
 
-    // Подготавливаем данные для отправки
+    // Получаем время последней синхронизации
+    const lastSyncTime = allData._lastSyncTime || 0;
+    const now = Date.now();
+
+    // Подготавливаем данные для отправки (только изменённые с момента последней синхронизации)
     const dataToSync = Object.entries(allData)
-      .filter(([key]) => key.startsWith('owners_') || key.startsWith('wishlist_'))
+      .filter(([key, value]) => {
+        if (!key.startsWith('owners_') && !key.startsWith('wishlist_')) return false;
+        // Отправляем только если timestamp свежее последней синхронизации
+        return value && value.timestamp && value.timestamp > lastSyncTime;
+      })
       .map(([key, value]) => ({
         key,
         ...value
       }));
 
     if (dataToSync.length === 0) {
-      log('No valid cache entries to sync');
+      log('No new data to sync (all entries already synced)');
       return;
     }
 
-    log(`Syncing ${dataToSync.length} entries to server...`);
+    log(`Syncing ${dataToSync.length} new/updated entries to server...`);
+    
+    // Выводим примеры данных
+    if (dataToSync.length > 0) {
+      log(`Sample entries: ${dataToSync.slice(0, 3).map(e => e.key).join(', ')}`);
+    }
+
+    let totalProcessed = 0;
+    let totalSkipped = 0;
 
     // Отправляем батчами
     for (let i = 0; i < dataToSync.length; i += SYNC_BATCH_SIZE) {
       const batch = dataToSync.slice(i, i + SYNC_BATCH_SIZE);
       
       try {
-        log(`→ PUSH batch ${i / SYNC_BATCH_SIZE + 1}: ${batch.length} entries to ${SYNC_SERVER_URL}`);
+        log(`→ PUSH batch ${Math.floor(i / SYNC_BATCH_SIZE) + 1}: ${batch.length} entries to ${SYNC_SERVER_URL}`);
         const response = await fetch(`${SYNC_SERVER_URL}/sync/push`, {
           method: 'POST',
           headers: {
@@ -50,16 +66,28 @@ export const syncCacheToServer = async () => {
         });
 
         if (!response.ok) {
-          logWarn(`Sync batch ${i / SYNC_BATCH_SIZE + 1} failed: ${response.status}`);
+          const errorText = await response.text();
+          logWarn(`Sync batch ${Math.floor(i / SYNC_BATCH_SIZE) + 1} failed: ${response.status} - ${errorText}`);
           continue;
         }
-        log(`✔ PUSH ok batch ${i / SYNC_BATCH_SIZE + 1}/${Math.ceil(dataToSync.length / SYNC_BATCH_SIZE)} status=${response.status}`);
+        
+        const result = await response.json();
+        const processed = result.processed || 0;
+        const skipped = result.skipped || 0;
+        
+        totalProcessed += processed;
+        totalSkipped += skipped;
+        
+        log(`✔ PUSH ok batch ${Math.floor(i / SYNC_BATCH_SIZE) + 1}/${Math.ceil(dataToSync.length / SYNC_BATCH_SIZE)} - updated: ${processed}, skipped: ${skipped}`);
       } catch (error) {
         logError(`Error syncing batch:`, error);
       }
     }
 
-    log('Cache sync completed');
+    // Сохраняем время последней успешной синхронизации
+    await chrome.storage.local.set({ _lastSyncTime: now });
+    
+    log(`Cache sync completed: ${totalProcessed} updated, ${totalSkipped} skipped`);
   } catch (error) {
     logError('Error during cache sync:', error);
   }
@@ -100,15 +128,32 @@ export const syncCacheFromServer = async (cardIds = []) => {
       return;
     }
 
-    // Обновляем локальное хранилище
+    // Получаем текущие локальные данные для сравнения
+    const localData = await chrome.storage.local.get(null);
+
+    // Обновляем локальное хранилище только если серверные данные свежее
     const storageUpdate = {};
+    let updated = 0;
+    let skipped = 0;
+    
     entries.forEach(entry => {
       const { key, count, timestamp } = entry;
-      storageUpdate[key] = { count, timestamp };
+      const localEntry = localData[key];
+      
+      // Обновляем только если серверные данные свежее или локальных нет
+      if (!localEntry || !localEntry.timestamp || localEntry.timestamp < timestamp) {
+        storageUpdate[key] = { count, timestamp };
+        updated++;
+      } else {
+        skipped++;
+      }
     });
 
-    await chrome.storage.local.set(storageUpdate);
-    log(`Updated ${entries.length} entries from server`);
+    if (Object.keys(storageUpdate).length > 0) {
+      await chrome.storage.local.set(storageUpdate);
+    }
+    
+    log(`Pull: updated ${updated}, skipped ${skipped} (local fresher) entries`);
   } catch (error) {
     logError('Error fetching cache from server:', error);
   }
@@ -139,14 +184,31 @@ export const syncCachePullAll = async (limit = 5000) => {
       return;
     }
 
+    // Получаем текущие локальные данные для сравнения
+    const localData = await chrome.storage.local.get(null);
+    
     const storageUpdate = {};
+    let updated = 0;
+    let skipped = 0;
+    
     entries.forEach(entry => {
       const { key, count, timestamp } = entry;
-      storageUpdate[key] = { count, timestamp };
+      const localEntry = localData[key];
+      
+      // Обновляем только если серверные данные свежее или локальных нет
+      if (!localEntry || !localEntry.timestamp || localEntry.timestamp < timestamp) {
+        storageUpdate[key] = { count, timestamp };
+        updated++;
+      } else {
+        skipped++;
+      }
     });
 
-    await chrome.storage.local.set(storageUpdate);
-    log(`Pull-all updated ${entries.length} entries from server`);
+    if (Object.keys(storageUpdate).length > 0) {
+      await chrome.storage.local.set(storageUpdate);
+    }
+    
+    log(`Pull-all: updated ${updated}, skipped ${skipped} (local fresher) entries`);
   } catch (error) {
     logError('Error pulling all cache from server:', error);
   }
