@@ -115,6 +115,44 @@ export const syncCacheFromServer = async (cardIds = []) => {
 };
 
 /**
+ * Полная загрузка всех записей из сервера (для нового пользователя)
+ */
+export const syncCachePullAll = async (limit = 5000) => {
+  if (!isExtensionContextValid()) return;
+
+  try {
+    log(`PULL ALL from server ${SYNC_SERVER_URL} (limit=${limit}) ...`);
+
+    const response = await fetch(`${SYNC_SERVER_URL}/sync/all?limit=${limit}`, {
+      method: 'GET'
+    });
+
+    if (!response.ok) {
+      logError(`Failed to pull all cache: ${response.status}`);
+      return;
+    }
+
+    const { entries } = await response.json();
+
+    if (!entries || entries.length === 0) {
+      log('No data from server (pull all)');
+      return;
+    }
+
+    const storageUpdate = {};
+    entries.forEach(entry => {
+      const { key, count, timestamp } = entry;
+      storageUpdate[key] = { count, timestamp };
+    });
+
+    await chrome.storage.local.set(storageUpdate);
+    log(`Pull-all updated ${entries.length} entries from server`);
+  } catch (error) {
+    logError('Error pulling all cache from server:', error);
+  }
+};
+
+/**
  * Сравнивает timestamp и обновляет запись если локальная свежее
  */
 export const compareAndUpdateCache = async (key, serverData) => {
@@ -170,6 +208,7 @@ if (typeof self !== 'undefined') {
   self.MangaBuffSync = {
     syncCacheToServer,
     syncCacheFromServer,
+    syncCachePullAll,
     initPeriodicSync,
     handleSyncAlarm,
   };
@@ -179,6 +218,7 @@ if (typeof self !== 'undefined') {
 export default {
   syncCacheToServer,
   syncCacheFromServer,
+  syncCachePullAll,
   compareAndUpdateCache,
   initPeriodicSync,
   handleSyncAlarm

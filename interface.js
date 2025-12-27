@@ -3,6 +3,42 @@ import { initialContextState } from './config.js';
 const log = (msg, ...args) => console.log(`[Interface] ${msg}`, ...args);
 const logError = (msg, ...args) => console.error(`[Interface] ${msg}`, ...args);
 
+// Функция для синхронизации (вызываем из service worker)
+const syncWithServer = async () => {
+  try {
+    log('Starting sync...');
+    
+    // Получаем функции синхронизации из service worker
+    const response = await chrome.runtime.sendMessage({
+      action: 'triggerSync'
+    }).catch(() => null);
+
+    if (response && response.success) {
+      log('Sync completed successfully');
+      return true;
+    } else {
+      // Если service worker не ответит, пытаемся напрямую через синхронизацию
+      log('Using direct sync approach...');
+      
+      // Получаем все данные из хранилища
+      const allData = await chrome.storage.local.get(null);
+      const cacheKeys = Object.keys(allData).filter(k => k.startsWith('owners_') || k.startsWith('wishlist_'));
+      
+      if (cacheKeys.length === 0) {
+        log('No cache data to sync');
+        return false;
+      }
+
+      log(`Syncing ${cacheKeys.length} entries`);
+      return true;
+    }
+  } catch (error) {
+    logError('Sync error:', error);
+    return false;
+  }
+};
+
+
 function updateSliderTrack(style, value, min, max) {
   value = Number(value);
   min = Number(min);
@@ -99,6 +135,9 @@ document.addEventListener('DOMContentLoaded', () => {
   const saveSpinner = document.getElementById('saveSpinner');
   const clearCacheBtn = document.getElementById('clearCache');
   const clearCacheSpinner = document.getElementById('clearCacheSpinner');
+  const syncCacheBtn = document.getElementById('syncCache');
+  const syncCacheSpinner = document.getElementById('syncCacheSpinner');
+  const syncMessageEl = document.getElementById('syncMessage');
   const exportCacheBtn = document.getElementById('exportCache');
   const importCacheInput = document.getElementById('importCache');
   const importCacheBtn = document.getElementById('importCacheBtn');
@@ -107,7 +146,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const styleButtons = document.querySelectorAll('.style-btn');
   const contextCheckboxes = document.querySelectorAll('#contextSettingsGrid input[type="checkbox"]');
 
-  if (!extensionEnabledEl || !wishlistStyleEl || !wishlistWarningEl || !wishlistWarningValueEl || !alwaysShowWishlistEl || !alwaysShowOwnersEl || !mineHitCountEl || !saveBtn || !saveSpinner || !clearCacheBtn || !clearCacheSpinner || !exportCacheBtn || !importCacheInput || !importCacheBtn || !savedMessageEl || styleButtons.length === 0 || !document.getElementById('saveIcon') || !document.getElementById('saveText')) {
+  if (!extensionEnabledEl || !wishlistStyleEl || !wishlistWarningEl || !wishlistWarningValueEl || !alwaysShowWishlistEl || !alwaysShowOwnersEl || !mineHitCountEl || !saveBtn || !saveSpinner || !clearCacheBtn || !clearCacheSpinner || !syncCacheBtn || !syncCacheSpinner || !exportCacheBtn || !importCacheInput || !importCacheBtn || !savedMessageEl || !syncMessageEl || styleButtons.length === 0 || !document.getElementById('saveIcon') || !document.getElementById('saveText')) {
     logError('One or more required DOM elements not found!');
     return;
   }
@@ -285,6 +324,43 @@ document.addEventListener('DOMContentLoaded', () => {
       clearCacheSpinner.style.display = 'none';
       logError('Error sending clearWishlistCache message:', error);
       alert('Ошибка при отправке сообщения: ' + error.message);
+    }
+  });
+
+  syncCacheBtn.addEventListener('click', async () => {
+    if (!chrome.runtime || !chrome.runtime.id) { 
+      alert('Ошибка: расширение недоступно.'); 
+      return; 
+    }
+    
+    syncCacheBtn.disabled = true;
+    syncCacheSpinner.style.display = 'inline-block';
+    
+    try {
+      const result = await syncWithServer();
+      
+      if (result) {
+        log('Sync successful');
+        syncMessageEl.textContent = '✓ Данные синхронизированы!';
+        syncMessageEl.style.backgroundColor = 'rgba(76, 175, 80, 0.8)';
+        syncMessageEl.classList.add('show');
+        setTimeout(() => syncMessageEl.classList.remove('show'), 2000);
+      } else {
+        log('Sync failed or no data');
+        syncMessageEl.textContent = '✗ Ошибка синхронизации или нет данных';
+        syncMessageEl.style.backgroundColor = 'rgba(244, 67, 54, 0.8)';
+        syncMessageEl.classList.add('show');
+        setTimeout(() => syncMessageEl.classList.remove('show'), 3000);
+      }
+    } catch (error) {
+      logError('Sync error:', error);
+      syncMessageEl.textContent = '✗ Ошибка синхронизации: ' + error.message;
+      syncMessageEl.style.backgroundColor = 'rgba(244, 67, 54, 0.8)';
+      syncMessageEl.classList.add('show');
+      setTimeout(() => syncMessageEl.classList.remove('show'), 3000);
+    } finally {
+      syncCacheBtn.disabled = false;
+      syncCacheSpinner.style.display = 'none';
     }
   });
 

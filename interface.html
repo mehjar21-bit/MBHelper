@@ -207,11 +207,13 @@
         <span id="saveText">Сохранить</span>
         <span class="spinner" id="saveSpinner"></span>
     </button>
+    <button id="syncCache"><i class="fas fa-sync-alt"></i> Синхронизировать <span class="spinner" id="syncCacheSpinner"></span></button>
     <button id="clearCache"><i class="fas fa-trash-alt"></i> Сбросить кэш <span class="spinner" id="clearCacheSpinner"></span></button>
     <button id="exportCache"><i class="fas fa-download"></i> Экспорт кэша</button>
     <input type="file" id="importCache" accept=".json" style="display: none;">
     <button id="importCacheBtn"><i class="fas fa-upload"></i> Импорт кэша</button>
     <div id="savedMessage" class="saved-message">Настройки сохранены!</div>
+    <div id="syncMessage" class="saved-message" style="background-color: rgba(76, 175, 80, 0.8);">Данные синхронизированы!</div>
 </div>
 
 <script type="module">

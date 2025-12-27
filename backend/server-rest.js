@@ -8,7 +8,7 @@ const PORT = process.env.PORT || 3000;
 
 // Supabase конфиг
 const SUPABASE_URL = process.env.SUPABASE_URL || 'https://mgusmnddeiutqjpmdqfk.supabase.co';
-const SUPABASE_KEY = process.env.SUPABASE_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1ndXNtbmRkZWl1dHFqcG1kcWZrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3MzMxNTI1MjAsImV4cCI6MjA0ODcyODUyMH0.xXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX'; // Заменить на реальный anon key
+const SUPABASE_KEY = process.env.SUPABASE_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1ndXNtbmRkZWl1dHFqcG1kcWZrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjY4MDY1MjQsImV4cCI6MjA4MjM4MjUyNH0.kVqc7_aV0g4s9Begc2hq1_sQyINuSvUJEK3VCg1S5KA';
 
 // CORS конфиг (разрешаем расширение и локальные хосты)
 const allowedOrigins = [
@@ -213,6 +213,47 @@ app.post('/sync/pull', async (req, res) => {
 });
 
 /**
+ * GET /sync/all - Получить все записи (с лимитом)
+ */
+app.get('/sync/all', async (req, res) => {
+  if (!dbConnected) {
+    console.warn('[/sync/all] Database not connected, returning empty array');
+    return res.status(200).json({
+      success: false,
+      error: 'Database not connected. Check SUPABASE_URL and SUPABASE_KEY',
+      entries: []
+    });
+  }
+
+  try {
+    const limit = Number(req.query.limit) || 5000;
+
+    const response = await axios.get(
+      `${SUPABASE_URL}/rest/v1/cache_entries?select=key,count,timestamp&limit=${limit}`,
+      {
+        headers: {
+          'apikey': SUPABASE_KEY,
+          'Authorization': `Bearer ${SUPABASE_KEY}`
+        },
+        validateStatus: () => true
+      }
+    );
+
+    if (response.status === 404) {
+      return res.status(503).json({ error: 'Table cache_entries missing', entries: [] });
+    }
+
+    return res.status(response.status).json({
+      success: response.status >= 200 && response.status < 300,
+      entries: response.data || []
+    });
+  } catch (error) {
+    console.error('Error in /sync/all:', error.message);
+    return res.status(500).json({ error: 'Internal server error', entries: [] });
+  }
+});
+
+/**
  * GET /cache/stats - Статистика кэша
  */
 app.get('/cache/stats', async (req, res) => {
@@ -224,12 +265,14 @@ app.get('/cache/stats', async (req, res) => {
   }
 
   try {
+    // Получаем все ключи с limit=0&count=exact для подсчёта
     const response = await axios.get(
-      `${SUPABASE_URL}/rest/v1/cache_entries?select=key&limit=1&count=exact`,
+      `${SUPABASE_URL}/rest/v1/cache_entries?select=key&limit=0`,
       {
         headers: {
           'apikey': SUPABASE_KEY,
-          'Authorization': `Bearer ${SUPABASE_KEY}`
+          'Authorization': `Bearer ${SUPABASE_KEY}`,
+          'Prefer': 'count=exact'
         },
         validateStatus: () => true
       }
@@ -239,9 +282,19 @@ app.get('/cache/stats', async (req, res) => {
       return res.status(503).json({ error: 'Table cache_entries missing', stats: null });
     }
 
-    const total = response.headers['content-range']
-      ? parseInt(response.headers['content-range'].split('/')[1] || '0', 10)
-      : 0;
+    // Получаем count из заголовка Content-Range
+    const contentRange = response.headers['content-range'];
+    let total = 0;
+    
+    if (contentRange && typeof contentRange === 'string') {
+      // Формат: "0-0/14" или просто число
+      const match = contentRange.match(/\/(\d+)$/);
+      if (match) {
+        total = parseInt(match[1], 10);
+      }
+    }
+
+    console.log(`[STATS] Content-Range: ${contentRange}, total: ${total}`);
 
     res.json({
       success: true,

@@ -1,5 +1,5 @@
 export const BASE_URL = 'https://mangabuff.ru';
-export const SYNC_SERVER_URL = 'http://localhost:3000'; // TODO: при деплое заменить на прод-URL
+export const SYNC_SERVER_URL = 'https://mbhelper-production.up.railway.app'; // Production Railway
 export const LOG_PREFIX = '[MangaBuffExt]';
 export const MAX_CONCURRENT_REQUESTS = 5; 
 
