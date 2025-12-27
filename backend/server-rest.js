@@ -318,17 +318,17 @@ app.get('/sync/all', async (req, res) => {
   }
 
   try {
-    const limit = Number(req.query.limit) || 15000;
+    const limit = Number(req.query.limit) || 1000;
+    const offset = Number(req.query.offset) || 0;
 
-    console.log(`[/sync/all] Fetching up to ${limit} entries from Supabase...`);
+    console.log(`[/sync/all] Fetching entries: offset=${offset}, limit=${limit}`);
 
     const response = await axios.get(
-      `${SUPABASE_URL}/rest/v1/cache_entries?select=key,count,timestamp&limit=${limit}`,
+      `${SUPABASE_URL}/rest/v1/cache_entries?select=key,count,timestamp&limit=${limit}&offset=${offset}`,
       {
         headers: {
           'apikey': SUPABASE_KEY,
           'Authorization': `Bearer ${SUPABASE_KEY}`,
-          'Range': `0-${limit - 1}`,
           'Prefer': 'count=exact'
         },
         validateStatus: () => true
