@@ -277,17 +277,22 @@ app.post('/sync/pull', async (req, res) => {
       keys.push(`wishlist_${id}`);
     });
 
-    // Запрашиваем данные через Supabase REST API
-    const keyFilter = keys.map(k => `key.eq.${k}`).join(',');
+    console.log(`[PULL] Fetching ${keys.length} keys for ${cardIds.length} cards`);
+
+    // Запрашиваем данные через Supabase REST API с использованием .in() фильтра
+    const keysStr = keys.join(',');
     const response = await axios.get(
-      `${SUPABASE_URL}/rest/v1/cache_entries?or=(${keyFilter})`,
+      `${SUPABASE_URL}/rest/v1/cache_entries?key=in.(${keysStr})&select=key,count,timestamp`,
       {
         headers: {
           'apikey': SUPABASE_KEY,
           'Authorization': `Bearer ${SUPABASE_KEY}`
-        }
+        },
+        timeout: 15000
       }
     );
+
+    console.log(`[PULL] Found ${response.data?.length || 0} entries`);
 
     res.json({
       success: true,
