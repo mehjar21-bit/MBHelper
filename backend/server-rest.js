@@ -121,44 +121,92 @@ app.post('/sync/push', async (req, res) => {
     }
 
     try {
-      // Используем RPC функцию для batch upsert с проверкой timestamp
+      // Шаг 1: Получаем существующие записи для сравнения timestamp
+      const keys = payload.map(e => e.key);
+      const keysFilter = keys.map(k => `"${k}"`).join(',');
+      
+      let existingEntries = {};
+      try {
+        const checkResp = await axios.get(
+          `${SUPABASE_URL}/rest/v1/cache_entries?key=in.(${keysFilter})&select=key,timestamp`,
+          {
+            headers: {
+              'apikey': SUPABASE_KEY,
+              'Authorization': `Bearer ${SUPABASE_KEY}`
+            },
+            validateStatus: () => true,
+            timeout: 10000
+          }
+        );
+
+        if (checkResp.status >= 200 && checkResp.status < 300 && Array.isArray(checkResp.data)) {
+          checkResp.data.forEach(entry => {
+            existingEntries[entry.key] = entry.timestamp;
+          });
+          console.log(`[SUPA] Found ${Object.keys(existingEntries).length} existing entries`);
+        }
+      } catch (checkErr) {
+        console.warn(`[SUPA] Failed to check existing entries: ${checkErr.message}`);
+      }
+
+      // Шаг 2: Фильтруем - оставляем только те, что свежее или новые
+      const toUpsert = payload.filter(entry => {
+        const existingTs = existingEntries[entry.key];
+        // Вставляем если: записи нет ИЛИ наши данные свежее
+        return !existingTs || existingTs < entry.timestamp;
+      });
+
+      const skipped = payload.length - toUpsert.length;
+      
+      if (toUpsert.length === 0) {
+        console.log(`[SUPA] All ${payload.length} entries are older than server data, skipping`);
+        return res.json({ 
+          success: true, 
+          processed: 0,
+          skipped: skipped,
+          total: payload.length,
+          message: `All entries skipped (server data is fresher)`
+        });
+      }
+
+      console.log(`[SUPA] Upserting ${toUpsert.length} entries (${skipped} skipped as older)`);
+
+      // Шаг 3: Batch upsert только свежих записей
       const supaResp = await axios.post(
-        `${SUPABASE_URL}/rest/v1/rpc/upsert_cache_entries`,
-        { entries: payload },
+        `${SUPABASE_URL}/rest/v1/cache_entries`,
+        toUpsert,
         {
           headers: {
             'apikey': SUPABASE_KEY,
             'Authorization': `Bearer ${SUPABASE_KEY}`,
-            'Content-Type': 'application/json'
+            'Content-Type': 'application/json',
+            'Prefer': 'resolution=merge-duplicates'
           },
-          validateStatus: () => true
+          validateStatus: () => true,
+          timeout: 30000
         }
       );
 
       if (supaResp.status >= 200 && supaResp.status < 300) {
-        const result = supaResp.data;
-        const updated = result?.updated || 0;
-        const skipped = result?.skipped || 0;
-        
-        console.log(`[SUPA] Push complete: updated=${updated}, skipped=${skipped} (server fresher)`);
+        console.log(`[SUPA] Upsert OK: ${toUpsert.length} entries updated`);
         return res.json({ 
           success: true, 
-          processed: updated,
+          processed: toUpsert.length,
           skipped: skipped,
           total: payload.length,
-          message: `Updated ${updated}, skipped ${skipped} of ${payload.length} entries`
+          message: `Updated ${toUpsert.length}, skipped ${skipped} (older) of ${payload.length} entries`
         });
       }
 
-      console.error('Supabase RPC failed:', supaResp.status, supaResp.data);
+      console.error('Supabase upsert failed:', supaResp.status, supaResp.data);
       return res.status(502).json({ 
         success: false, 
-        error: 'RPC upsert_cache_entries failed. Make sure the function exists in Supabase.',
+        error: 'Upsert failed',
         details: supaResp.data,
         status: supaResp.status
       });
     } catch (err) {
-      console.error('Error calling RPC upsert:', err.message);
+      console.error('Error in push:', err.message);
       return res.status(500).json({ success: false, error: err.message });
     }
   } catch (error) {
