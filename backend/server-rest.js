@@ -318,7 +318,9 @@ app.get('/sync/all', async (req, res) => {
   }
 
   try {
-    const limit = Number(req.query.limit) || 5000;
+    const limit = Number(req.query.limit) || 15000;
+
+    console.log(`[/sync/all] Fetching up to ${limit} entries from Supabase...`);
 
     const response = await axios.get(
       `${SUPABASE_URL}/rest/v1/cache_entries?select=key,count,timestamp&limit=${limit}`,
@@ -334,6 +336,8 @@ app.get('/sync/all', async (req, res) => {
     if (response.status === 404) {
       return res.status(503).json({ error: 'Table cache_entries missing', entries: [] });
     }
+
+    console.log(`[/sync/all] Returning ${response.data?.length || 0} entries (status: ${response.status})`);
 
     return res.status(response.status).json({
       success: response.status >= 200 && response.status < 300,
