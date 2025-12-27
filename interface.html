@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MangaBuff Extension</title>
+    <link href="https://fonts.googleapis.com/css2?family=Exo+2:wght@400;600&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" integrity="sha512-iecdLmaskl7CVkqkXNQ/ZH/XLlvWZOJyj7Yy7tcenmpD1ypASozpmT/E0iPtmFIB46ZmdtAc9eNBvH0H/ZpiQ==" crossorigin="anonymous" referrerpolicy="no-referrer" />
+    <link rel="stylesheet" href="styles.css">
+    <style>
+        .setting.checkbox-setting { display: flex; align-items: center; gap: 10px; justify-content: space-between; }
+        .setting.checkbox-setting label { margin-bottom: 0; flex-grow: 1; }
+
+        .context-settings-container { margin-top: 25px; padding-top: 15px; }
+        .context-settings-container legend { font-size: 16px; font-weight: 600; margin-bottom: 15px; padding: 0 10px; color: #bbb; }
+        .context-settings-grid { display: grid; grid-template-columns: auto auto auto; gap: 10px 15px; align-items: center; }
+        .context-name { font-weight: 600; text-align: right; padding-right: 5px; color: #ccc; }
+        .context-toggle { text-align: center; } /* Center toggles/placeholders */
+        .context-settings-grid span:nth-child(3n+2), .context-settings-grid span:nth-child(3n+3) { text-align: center; }
+        .grid-header { font-weight: bold; color: #aaa; text-align: center; font-size: 0.9em; padding-bottom: 5px; }
+        .grid-header.context-header { text-align: right; padding-right: 5px; }
+        body.style-2 .context-settings-container legend { color: #666; }
+        body.style-2 .context-name { color: #555; }
+        body.style-2 .grid-header { color: #888; }
+        body.style-3 .context-settings-container legend { color: #999; }
+        body.style-3 .context-name { color: #aaa; }
+        body.style-3 .grid-header { color: #777; }
+        #mineHitCount { text-align: center; }
+
+        .master-switch-container {
+            padding: 10px 0;
+            margin-bottom: 0;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+        .master-switch-container label {
+            margin-bottom: 0;
+            font-weight: 600;
+            flex-grow: 1;
+            margin-right: 15px;
+        }
+
+        .settings-disabled .setting:not(.master-switch-container),
+        .settings-disabled .context-settings-container {
+            opacity: 0.5;
+            pointer-events: none;
+        }
+        .settings-disabled .master-switch-container {
+            opacity: 1;
+            pointer-events: auto;
+        }
+
+        .toggle-switch {
+            display: inline-flex;
+            align-items: center;
+            cursor: pointer;
+            vertical-align: middle; 
+        }
+
+        .toggle-switch input[type="checkbox"] {
+            opacity: 0;
+            width: 0;
+            height: 0;
+            position: absolute;
+        }
+
+        .toggle-switch .switch-track {
+            position: relative;
+            width: 44px;
+            height: 22px;
+            background-color: #555;
+            border-radius: 11px;
+            transition: background-color 0.3s ease;
+            margin-left: 10px; 
+            flex-shrink: 0;
+        }
+        .context-toggle .toggle-switch .switch-track {
+             margin-left: 0;
+        }
+
+
+        .toggle-switch .switch-thumb {
+            position: absolute;
+            top: 2px;
+            left: 2px;
+            width: 18px;
+            height: 18px;
+            background-color: #fff;
+            border-radius: 50%;
+            transition: transform 0.3s ease;
+        }
+
+        .toggle-switch input[type="checkbox"]:checked + .switch-track {
+            background-color: #8a4af3;
+        }
+
+        .toggle-switch input[type="checkbox"]:checked + .switch-track .switch-thumb {
+            transform: translateX(22px);
+        }
+
+        body.style-2 .toggle-switch .switch-track { background-color: #bdc3c7; }
+        body.style-2 .toggle-switch input[type="checkbox"]:checked + .switch-track { background-color: #3498db; }
+
+        body.style-3 .toggle-switch .switch-track { background-color: #444; }
+        body.style-3 .toggle-switch input[type="checkbox"]:checked + .switch-track { background-color: #e67e22; }
+
+        .settings-divider {
+            border: none;
+            height: 1px;
+            background-color: #444;
+            margin: 25px 0;
+        }
+        body.style-2 .settings-divider { background-color: #ddd; }
+        body.style-3 .settings-divider { background-color: #555; }
+
+        .tooltip-icon {
+            display: inline-block;
+            margin-left: 6px;
+            color: #aaa;
+            cursor: help;
+            font-size: 0.9em;
+            vertical-align: middle;
+        }
+        body.style-2 .tooltip-icon { color: #888; }
+        body.style-3 .tooltip-icon { color: #777; }
+
+        #save.saved {
+            background: linear-gradient(135deg, #2ecc71, #27ae60) !important;
+        }
+        #save.saved .spinner { display: none !important; }
+
+    </style>
+</head>
+<body class="style-1">
+<div class="container" id="settingsContainer">
+    <a href="https://boosty.to/dungeonmouse/donate" target="_blank" rel="noopener noreferrer" id="boosty-link" title="Поддержать автора на Boosty">
+         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24">
+            <path fill="currentColor" d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm4.91 12.52c-.1.19-.25.35-.43.48-.66.44-1.4.7-2.2.79-.5.06-.97.1-1.4.1-.36 0-.72 0-1.08-.03-.85-.06-1.66-.26-2.4-.58-.19-.09-.37-.19-.53-.31-.3-.23-.54-.53-.7-.86-.14-.29-.22-.6-.22-.91 0-.25.04-.5.13-.74.13-.36.34-.68.6-.95.3-.31.65-.56 1.03-.74.53-.26 1.1-.41 1.7-.48.4-.05.8-.07 1.2-.07.38 0 .75.01 1.12.04.81.08 1.58.3 2.28.64.18.09.35.19.5.31.32.24.58.55.76.9.16.3.24.63.24.96 0 .26-.05.52-.14.77-.05.16-.11.31-.19.46zm-5.06-5.1H9.98c-.47 0-.87.33-.98.78l-.66 2.65h4.51l.66-2.65c.11-.45-.29-.8-.76-.8zm3.31 3.43H8.67l-.39 1.55c-.1.4.14.81.53.96.85.33 1.76.5 2.7.5s1.85-.17 2.7-.5c.39-.15.63-.56.53-.96l-.37-1.55z"/>
+        </svg>
+    </a>
+
+    <h1>MangaBuff Extension</h1>
+
+    <div class="setting master-switch-container">
+        <label for="extensionEnabled"><i class="fas fa-power-off"></i> Включить расширение</label>
+        <label class="toggle-switch">
+            <input type="checkbox" id="extensionEnabled">
+            <span class="switch-track"><span class="switch-thumb"></span></span>
+        </label>
+    </div>
+
+    <hr class="settings-divider">
+
+    <div class="setting">
+      <label for="wishlistWarning"><i class="fas fa-users"></i> Порог желающих: <span id="wishlistWarningValue">10</span>
+        <span class="tooltip-icon" title="Выделять карты, которые хотят больше указанного числа пользователей">
+            <i class="fas fa-question-circle"></i>
+        </span>
+      </label>
+      <input type="range" id="wishlistWarning" min="0" max="100" value="10">
+    </div>
+    <div class="setting checkbox-setting">
+      <label for="alwaysShowWishlist"><i class="fas fa-heart"></i> Всегда показывать желающих</label>
+      <label class="toggle-switch">
+        <input type="checkbox" id="alwaysShowWishlist">
+        <span class="switch-track"><span class="switch-thumb"></span></span>
+      </label>
+    </div>
+    <div class="setting checkbox-setting">
+      <label for="alwaysShowOwners"><i class="fas fa-user-check"></i> Всегда показывать владельцев</label>
+      <label class="toggle-switch">
+          <input type="checkbox" id="alwaysShowOwners">
+          <span class="switch-track"><span class="switch-thumb"></span></span>
+      </label>
+    </div>
+    <div class="setting">
+      <label><i class="fas fa-paint-brush"></i> Стиль отображения:</label>
+      <div class="style-switcher">
+        <button class="style-btn" data-style="style-1">1</button>
+        <button class="style-btn" data-style="style-2">2</button>
+        <button class="style-btn" data-style="style-3">3</button>
+      </div>
+      <input type="hidden" id="wishlistStyle">
+    </div>
+    <div class="setting">
+        <label for="mineHitCount"><i class="fas fa-bomb"></i> Ударов шахты за клик:</label>
+        <input type="number" id="mineHitCount" name="mineHitCount" min="1" max="1000" step="10" value="100">
+    </div>
+
+     <hr class="settings-divider">
+
+    <fieldset class="context-settings-container">
+        <legend><i class="fas fa-map-marker-alt"></i> Видимость по умолчанию для страниц</legend>
+        <div class="context-settings-grid" id="contextSettingsGrid">
+             <span class="grid-header context-header">Страница</span>
+             <span class="grid-header"><i class="fas fa-heart"></i> Желают</span>
+             <span class="grid-header"><i class="fas fa-user-check"></i> Владеют</span>
+        </div>
+    </fieldset>
+
+    <hr class="settings-divider">
+
+    <button id="save">
+        <i id="saveIcon" class="fas fa-save"></i>
+        <span id="saveText">Сохранить</span>
+        <span class="spinner" id="saveSpinner"></span>
+    </button>
+    <button id="clearCache"><i class="fas fa-trash-alt"></i> Сбросить кэш <span class="spinner" id="clearCacheSpinner"></span></button>
+    <button id="exportCache"><i class="fas fa-download"></i> Экспорт кэша</button>
+    <input type="file" id="importCache" accept=".json" style="display: none;">
+    <button id="importCacheBtn"><i class="fas fa-upload"></i> Импорт кэша</button>
+    <div id="savedMessage" class="saved-message">Настройки сохранены!</div>
+</div>
+
+<script type="module">
+    import { initialContextState } from './config.js';
+    window.initialContextState = initialContextState;
+</script>
+<script src="interface.js" type="module"></script>
+</body>
+</html>
