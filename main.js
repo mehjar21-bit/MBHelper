@@ -112,6 +112,11 @@ const initPage = async () => {
             contextState = { ...contextState, [context]: { ...effectiveInitialContextState } };
             log(`Current global contextState after init:`, contextState);
 
+            // Проверяем, нужно ли показывать счетчики (глобальная или контекстная настройка)
+            const shouldShowWishlist = settings.alwaysShowWishlist || contextState[context]?.wishlist;
+            const shouldShowOwners = settings.alwaysShowOwners || contextState[context]?.owners;
+            const shouldProcessCards = shouldShowWishlist || shouldShowOwners;
+
             try {
                  switch (context) {
                       case 'userCards': await initUserCards(); break;
@@ -120,39 +125,45 @@ const initPage = async () => {
                           await handleMarketCreatePage();
                           break;
                       case 'trade':
-                          if (settings.alwaysShowWishlist || contextState[context]?.wishlist || settings.alwaysShowOwners || contextState[context]?.owners) {
+                          if (shouldProcessCards) {
                               cachedElements.delete(contextsSelectors.trade);
                               await processCards('trade', settings);
                           }
                           break;
                       case 'pack': await initPackPage(); break;
                       case 'deckView':
-                         if (settings.alwaysShowWishlist || contextState[context]?.wishlist || settings.alwaysShowOwners || contextState[context]?.owners) {
+                         if (shouldProcessCards) {
                             cachedElements.delete(contextsSelectors.deckView);
                             await processCards('deckView', settings);
                          }
                          break;
-                      case 'tradeOffer': await initStatsButtons(context, '.trade__rank-wrapper .trade__rank', 'trade__type-card-button'); break;
+                      case 'tradeOffer': 
+                          if (shouldProcessCards) {
+                              cachedElements.delete(contextsSelectors.tradeOffer);
+                              await processCards('tradeOffer', settings);
+                          }
+                          await initStatsButtons(context, '.trade__rank-wrapper .trade__rank', 'trade__type-card-button'); 
+                          break;
                       case 'remelt':
                       case 'market':
                       case 'split':
                       case 'deckCreate':
                       case 'marketRequestCreate':
-                          if (settings.alwaysShowWishlist || contextState[context]?.wishlist || settings.alwaysShowOwners || contextState[context]?.owners) {
+                          if (shouldProcessCards) {
                               cachedElements.delete(contextsSelectors[context]);
                               await processCards(context, settings);
                           }
                           await initStatsButtons(context, '.card-filter-form__lock-status', 'card-filter-form__lock');
                           break;
                       case 'auctions':
-                          if (settings.alwaysShowWishlist || contextState[context]?.wishlist || settings.alwaysShowOwners || contextState[context]?.owners) {
+                          if (shouldProcessCards) {
                               cachedElements.delete(contextsSelectors[context]);
                               await processCards(context, settings);
                           }
                           await initStatsButtons(context, '.card-filter-form__lock-status', 'card-filter-form__lock');
                           break;
                       case 'marketRequestView':
-                         if (settings.alwaysShowWishlist || contextState[context]?.wishlist || settings.alwaysShowOwners || contextState[context]?.owners) {
+                         if (shouldProcessCards) {
                              log(`Processing cards for ${context}`);
                              cachedElements.delete(contextsSelectors[context]);
                              await processCards(context, settings);
@@ -198,8 +209,14 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                    const currentState = contextState[context] || {};
                    const effectiveState = { ...(initialContextState[context] || {}), ...currentState };
                    contextState = { ...contextState, [context]: effectiveState };
+                   
+                   // Проверяем, нужно ли показывать счетчики
+                   const shouldShowWishlist = settings.alwaysShowWishlist || contextState[context]?.wishlist;
+                   const shouldShowOwners = settings.alwaysShowOwners || contextState[context]?.owners;
+                   const shouldProcessCards = shouldShowWishlist || shouldShowOwners;
+                   
                    if (context === 'userCards') { initUserCards(); }
-                   else if (['tradeOffer', 'remelt', 'market', 'split', 'deckCreate', 'marketCreate', 'marketRequestCreate'].includes(context)) {
+                   else if (['tradeOffer', 'remelt', 'market', 'split', 'deckCreate', 'marketCreate', 'marketRequestCreate', 'auctions'].includes(context)) {
                       const buttonConfigMap = {
                          'tradeOffer': { selector: '.trade__rank-wrapper .trade__rank', class: 'trade__type-card-button' },
                          'remelt': { selector: '.card-filter-form__lock-status', class: 'card-filter-form__lock' },
@@ -211,12 +228,20 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                          'auctions': { selector: '.card-filter-form__lock-status', class: 'card-filter-form__lock' },
                       };
                       const buttonConfig = buttonConfigMap[context];
-                      if (buttonConfig) { initStatsButtons(context, buttonConfig.selector, buttonConfig.class); }
+                      if (buttonConfig) { 
+                          initStatsButtons(context, buttonConfig.selector, buttonConfig.class);
+                          if (shouldProcessCards) {
+                              cachedElements.delete(contextsSelectors[context]);
+                              processCards(context, settings);
+                          }
+                      }
                       else { logWarn(`Button config not found for ${context}...`); processCards(context, settings); }
                    } else if (context === 'pack') { initPackPage(); }
                    else if (context === 'trade' || context === 'deckView' || context === 'marketRequestView') {
-                        cachedElements.delete(contextsSelectors[context]);
-                        processCards(context, settings);
+                        if (shouldProcessCards) {
+                            cachedElements.delete(contextsSelectors[context]);
+                            processCards(context, settings);
+                        }
                    }
                    else { logWarn(`Unhandled context ${context} in clear cache reprocessing.`); }
                 } else {
