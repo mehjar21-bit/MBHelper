@@ -121,43 +121,45 @@ app.post('/sync/push', async (req, res) => {
     }
 
     try {
+      // Используем RPC функцию для batch upsert с проверкой timestamp
       const supaResp = await axios.post(
-        `${SUPABASE_URL}/rest/v1/cache_entries`,
-        payload,
+        `${SUPABASE_URL}/rest/v1/rpc/upsert_cache_entries`,
+        { entries: payload },
         {
           headers: {
             'apikey': SUPABASE_KEY,
             'Authorization': `Bearer ${SUPABASE_KEY}`,
-            'Content-Type': 'application/json',
-            'Prefer': 'resolution=merge-duplicates,return=representation'
+            'Content-Type': 'application/json'
           },
           validateStatus: () => true
         }
       );
 
       if (supaResp.status >= 200 && supaResp.status < 300) {
-        const returned = Array.isArray(supaResp.data) ? supaResp.data.length : 0;
-        processed = returned || payload.length;
-        console.log(`[SUPA] Upsert OK: status=${supaResp.status} returned=${returned}`);
+        const result = supaResp.data;
+        const updated = result?.updated || 0;
+        const skipped = result?.skipped || 0;
+        
+        console.log(`[SUPA] Push complete: updated=${updated}, skipped=${skipped} (server fresher)`);
         return res.json({ 
           success: true, 
-          processed,
-          returned,
-          message: `Processed ${processed} entries`
+          processed: updated,
+          skipped: skipped,
+          total: payload.length,
+          message: `Updated ${updated}, skipped ${skipped} of ${payload.length} entries`
         });
       }
 
-      console.error('Supabase upsert failed:', supaResp.status, supaResp.data);
+      console.error('Supabase RPC failed:', supaResp.status, supaResp.data);
       return res.status(502).json({ 
         success: false, 
-        processed: 0,
-        error: 'Upsert rejected by Supabase',
+        error: 'RPC upsert_cache_entries failed. Make sure the function exists in Supabase.',
         details: supaResp.data,
         status: supaResp.status
       });
     } catch (err) {
-      console.error('Error upserting entries:', err.message);
-      return res.status(500).json({ success: false, processed: 0, error: err.message });
+      console.error('Error calling RPC upsert:', err.message);
+      return res.status(500).json({ success: false, error: err.message });
     }
   } catch (error) {
     console.error('Error in /sync/push:', error.message);
