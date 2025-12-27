@@ -1,6 +1,6 @@
 {
     "name": "mangabuff-extension",
-    "version": "1.0.1",
+    "version": "3.0.0",
     "description": "Расширение для Mangabuff.ru, добавляющее информацию о желающих и владельцах карточек.",
     "private": true,
     "main": "main.js",

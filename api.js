@@ -157,6 +157,14 @@ const getUserCount = async (type, cardId, retries = 2) => {
           try {
             await chrome.storage.local.set({ [cacheKey]: { count: total, timestamp, ttl } });
             log(`Fetched (Optimized) and cached ${type} count for card ${cardId}: ${total} (TTL: ${ttl / (24 * 60 * 60 * 1000)} days)`);
+            
+            // Сразу отправляем на сервер (фоновая синхронизация)
+            try {
+              const { pushToSync } = await import('./sync.js');
+              await pushToSync([{ key: cacheKey, count: total, timestamp }]);
+            } catch (syncError) {
+              logWarn(`Could not sync new data for ${cacheKey}:`, syncError);
+            }
           } catch (storageError) {
             logError(`Error setting local storage for cache key ${cacheKey}:`, storageError);
           }

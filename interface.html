@@ -3,11 +3,12 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>MangaBuff Extension</title>
+    <title>MangaBuff Helper</title>
     <link href="https://fonts.googleapis.com/css2?family=Exo+2:wght@400;600&display=swap" rel="stylesheet">
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@800&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" integrity="sha512-iecdLmaskl7CVkqkXNQ/ZH/XLlvWZOJyj7Yy7tcenmpD1ypASozpmT/E0iPtmFIB46ZmdtAc9eNBvH0H/ZpiQ==" crossorigin="anonymous" referrerpolicy="no-referrer" />
     <link rel="stylesheet" href="styles.css">
+    <link rel="stylesheet" href="styles-newyear.css">
     <style>
         .setting.checkbox-setting { display: flex; align-items: center; gap: 10px; justify-content: space-between; }
         .setting.checkbox-setting label { margin-bottom: 0; flex-grow: 1; }
@@ -140,7 +141,7 @@
         </svg>
     </a>
 
-    <h1>MangaBuff Extension</h1>
+    <h1>MangaBuff Helper</h1>
 
     <div class="setting master-switch-container">
         <label for="extensionEnabled"><i class="fas fa-power-off"></i> Включить расширение</label>
@@ -210,6 +211,18 @@
     <div id="savedMessage" class="saved-message">Настройки сохранены!</div>
     <div id="syncMessage" class="saved-message" style="background-color: rgba(76, 175, 80, 0.8);">Данные синхронизированы!</div>
 </div>
+
+<!-- Падающие снежинки -->
+<div class="snowflake">❄</div>
+<div class="snowflake">❄</div>
+<div class="snowflake">❄</div>
+<div class="snowflake">❄</div>
+<div class="snowflake">❄</div>
+<div class="snowflake">❄</div>
+<div class="snowflake">❄</div>
+<div class="snowflake">❄</div>
+<div class="snowflake">❄</div>
+<div class="snowflake">❄</div>
 
 <script type="module">
     import { initialContextState } from './config.js';
