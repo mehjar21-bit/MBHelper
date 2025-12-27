@@ -327,7 +327,9 @@ app.get('/sync/all', async (req, res) => {
       {
         headers: {
           'apikey': SUPABASE_KEY,
-          'Authorization': `Bearer ${SUPABASE_KEY}`
+          'Authorization': `Bearer ${SUPABASE_KEY}`,
+          'Range': `0-${limit - 1}`,
+          'Prefer': 'count=exact'
         },
         validateStatus: () => true
       }
