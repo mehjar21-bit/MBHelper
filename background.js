@@ -192,6 +192,12 @@ chrome.runtime.onInstalled.addListener(() => {
     initPeriodicSync();
 });
 
+// Инициализация при запуске service worker (каждый раз при загрузке Chrome)
+chrome.runtime.onStartup.addListener(() => {
+    log('Browser startup, initializing periodic sync...');
+    initPeriodicSync();
+});
+
 // Обработчик alarm для периодической синхронизации
 chrome.alarms.onAlarm.addListener((alarm) => {
     log('Alarm triggered:', alarm.name);

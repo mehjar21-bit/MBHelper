@@ -70,6 +70,20 @@ const initPage = async () => {
     }
 
     log('Extension is enabled, proceeding with initialization.');
+    
+    // Триггер фоновой синхронизации при первой загрузке страницы
+    try {
+        chrome.runtime.sendMessage({ action: 'triggerSync' }, response => {
+            if (chrome.runtime.lastError) {
+                logWarn('Failed to trigger background sync:', chrome.runtime.lastError);
+            } else {
+                log('Background sync triggered successfully');
+            }
+        });
+    } catch (error) {
+        logWarn('Could not trigger sync on page load:', error);
+    }
+    
     const token = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
     if (token) {
         setCsrfToken(token);
