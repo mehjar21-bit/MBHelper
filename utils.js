@@ -2,9 +2,34 @@ import { LOG_PREFIX } from './config.js';
 
 export const cachedElements = new Map();
 
-export const log = (message, ...args) => console.log(`${LOG_PREFIX} ${message}`, ...args);
-export const logWarn = (message, ...args) => console.warn(`${LOG_PREFIX} ${message}`, ...args);
-export const logError = (message, ...args) => console.error(`${LOG_PREFIX} ${message}`, ...args);
+// Проверяем стелс режим перед логированием
+let stealthMode = true; // По умолчанию включен
+
+// Загружаем настройку стелс режима
+if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.sync) {
+  chrome.storage.sync.get(['stealthMode'], (data) => {
+    stealthMode = data.stealthMode !== undefined ? data.stealthMode : true;
+  });
+  
+  // Слушаем изменения настройки
+  chrome.storage.onChanged.addListener((changes, namespace) => {
+    if (namespace === 'sync' && changes.stealthMode) {
+      stealthMode = changes.stealthMode.newValue;
+    }
+  });
+}
+
+export const log = (message, ...args) => {
+  if (!stealthMode) console.log(`${LOG_PREFIX} ${message}`, ...args);
+};
+
+export const logWarn = (message, ...args) => {
+  if (!stealthMode) console.warn(`${LOG_PREFIX} ${message}`, ...args);
+};
+
+export const logError = (message, ...args) => {
+  if (!stealthMode) console.error(`${LOG_PREFIX} ${message}`, ...args);
+};
 
 export const isExtensionContextValid = () => {
   try {

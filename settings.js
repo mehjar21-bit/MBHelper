@@ -5,7 +5,8 @@ const defaultSettings = {
   wishlistWarning: 10,
   wishlistStyle: 'style-1',
   alwaysShowWishlist: false,
-  alwaysShowOwners: false
+  alwaysShowOwners: false,
+  stealthMode: true
 };
 
 export const getSettings = async () => {

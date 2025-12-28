@@ -58,7 +58,7 @@ const initPage = async () => {
     }
     log('Starting page initialization...');
 
-    addExtensionSettingsButton();
+    await addExtensionSettingsButton();
 
     const settings = await getSettings();
     log('Settings loaded in initPage:', settings);

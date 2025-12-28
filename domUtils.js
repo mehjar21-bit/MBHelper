@@ -82,8 +82,18 @@ export const addTextLabel = (container, className, text, title, position, type, 
 };
 
 
-export const addExtensionSettingsButton = () => {
+export const addExtensionSettingsButton = async () => {
   try {
+    // Проверяем стелс режим
+    const { stealthMode } = await chrome.storage.sync.get(['stealthMode']);
+    const isStealthMode = stealthMode !== undefined ? stealthMode : true;
+    
+    // В стелс режиме не показываем кнопку
+    if (isStealthMode) {
+      log('Stealth mode enabled - hiding settings button');
+      return;
+    }
+    
     const menu = document.querySelector('.dropdown__content .menu--profile');
     if (!menu || menu.querySelector('.menu__item--extension-settings')) return;
     const settingsButton = document.createElement('a');
