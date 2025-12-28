@@ -39,24 +39,33 @@ const getUserCount = async (type, cardId, retries = 2) => {
       csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
   }
 
-  try {
-    const cached = await chrome.storage.local.get([cacheKey]).then(r => r[cacheKey]);
-    if (cached) {
-      const age = Date.now() - cached.timestamp;
-      const isOld = age > 7 * 24 * 60 * 60 * 1000; // Старше 7 дней
-      
-      // Если данные старые - запускаем фоновое обновление
-      if (isOld) {
-        log(`Cache is old (${Math.floor(age / (24 * 60 * 60 * 1000))} days) for ${cacheKey}, scheduling background refresh`);
-        // Фоновое обновление без ожидания
-        setTimeout(() => backgroundRefresh(type, cardId, cacheKey), 1000);
+  // Проверяем, является ли карта специальной (ID 328340-329239)
+  const cardIdNum = parseInt(cardId, 10);
+  const isSpecialCard = cardIdNum >= 328340 && cardIdNum <= 329239;
+  
+  // Для специальных карт НЕ используем кэш, всегда делаем свежий запрос
+  if (!isSpecialCard) {
+    try {
+      const cached = await chrome.storage.local.get([cacheKey]).then(r => r[cacheKey]);
+      if (cached) {
+        const age = Date.now() - cached.timestamp;
+        const isOld = age > 7 * 24 * 60 * 60 * 1000; // Старше 7 дней
+        
+        // Если данные старые - запускаем фоновое обновление
+        if (isOld) {
+          log(`Cache is old (${Math.floor(age / (24 * 60 * 60 * 1000))} days) for ${cacheKey}, scheduling background refresh`);
+          // Фоновое обновление без ожидания
+          setTimeout(() => backgroundRefresh(type, cardId, cacheKey), 1000);
+        }
+        
+        // Возвращаем кэшированные данные с метаданными
+        return { count: cached.count, timestamp: cached.timestamp, isOld };
       }
-      
-      // Возвращаем кэшированные данные с метаданными
-      return { count: cached.count, timestamp: cached.timestamp, isOld };
+    } catch (error) {
+        logError(`Error accessing local storage for cache key ${cacheKey}:`, error);
     }
-  } catch (error) {
-      logError(`Error accessing local storage for cache key ${cacheKey}:`, error);
+  } else {
+    log(`Special card ${cardId} (${type}) - skipping cache, always fresh request`);
   }
 
   if (pendingRequests.has(cacheKey)) {

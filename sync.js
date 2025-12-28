@@ -217,7 +217,7 @@ export const syncCacheFromServer = async (cardIds = []) => {
 /**
  * Полная загрузка всех записей из сервера (для нового пользователя)
  */
-export const syncCachePullAll = async (limit = 15000) => {
+export const syncCachePullAll = async (limit = 500000) => {
   if (!isExtensionContextValid()) return;
 
   try {
