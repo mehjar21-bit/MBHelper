@@ -1,7 +1,7 @@
 ﻿// cardProcessor.js (СЫ v4 - Always Show)
 import { isExtensionContextValid, getElements, log, logWarn, logError } from './utils.js';
-import { getWishlistCount, getOwnersCount } from './api.js';
-import { addTextLabel } from './domUtils.js';
+import { getWishlistCount, getOwnersCount, forceRefreshCard } from './api.js';
+import { addTextLabel, addRefreshButton } from './domUtils.js';
 import { contextsSelectors } from './config.js';
 import { contextState } from './main.js';
 
@@ -59,6 +59,38 @@ export const processCards = async (context, settings) => {
 
       item.querySelector('.wishlist-warning')?.remove();
       item.querySelector('.owners-count')?.remove();
+
+      // Добавляем кнопку обновления
+      addRefreshButton(item, cardId, async (id) => {
+        // Удаляем старые метки
+        item.querySelector('.wishlist-warning')?.remove();
+        item.querySelector('.owners-count')?.remove();
+        
+        // Принудительно обновляем данные
+        const result = await forceRefreshCard(id);
+        
+        if (result) {
+          // Показываем свежие данные
+          if (showWishlist) {
+            const displayText = `${result.wishlist}`;
+            const tooltipText = `Хотят: ${result.wishlist} (только что обновлено)`;
+            const position = (showOwners && context !== 'userCards') ? 'top' : 'top';
+            addTextLabel(item, 'wishlist-warning', displayText, tooltipText, position, 'wishlist', {
+              color: result.wishlist >= settings.wishlistWarning ? '#FFA500' : '#00FF00',
+              opacity: 1
+            }, context);
+          }
+          
+          if (showOwners) {
+            const displayText = `${result.owners}`;
+            const tooltipText = `Владеют: ${result.owners} (только что обновлено)`;
+            const position = showWishlist ? 'middle' : 'top';
+            addTextLabel(item, 'owners-count', displayText, tooltipText, position, 'owners', {
+              opacity: 1
+            }, context);
+          }
+        }
+      });
 
       const tasks = [];
 

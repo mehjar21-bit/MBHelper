@@ -1,6 +1,7 @@
 // api.js (С ОПТИМИЗАЦИЕЙ ПО ПАГИНАЦИИ)
 import { isExtensionContextValid, log, logWarn, logError } from './utils.js';
 import { MAX_CONCURRENT_REQUESTS } from './config.js';
+import { pushToSync } from './sync.js';
 
 export const pendingRequests = new Map();
 export let activeRequests = 0;
@@ -9,6 +10,48 @@ export let csrfToken = null;
 export const setCsrfToken = (token) => {
     csrfToken = token;
 }
+
+// Функция для принудительного обновления карты (без кэша)
+export const forceRefreshCard = async (cardId) => {
+  if (!isExtensionContextValid()) return null;
+
+  try {
+    // Удаляем кэш для этой карты
+    await chrome.storage.local.remove([`wishlist_${cardId}`, `owners_${cardId}`]);
+    log(`Cache cleared for card ${cardId}`);
+
+    // Получаем свежие данные
+    const [wishlistData, ownersData] = await Promise.all([
+      getUserCount('wishlist', cardId),
+      getUserCount('owners', cardId)
+    ]);
+
+    // Отправляем на сервер синхронизации
+    if (wishlistData?.count !== undefined) {
+      await pushToSync([{
+        type: 'wishlist',
+        cardId: cardId,
+        count: wishlistData.count,
+        timestamp: wishlistData.timestamp
+      }]);
+    }
+
+    if (ownersData?.count !== undefined) {
+      await pushToSync([{
+        type: 'owners',
+        cardId: cardId,
+        count: ownersData.count,
+        timestamp: ownersData.timestamp
+      }]);
+    }
+
+    log(`Card ${cardId} refreshed successfully`);
+    return { wishlist: wishlistData?.count ?? 0, owners: ownersData?.count ?? 0 };
+  } catch (error) {
+    logError(`Error force refreshing card ${cardId}:`, error);
+    return null;
+  }
+};
 
 const getLastPageNumber = (doc) => {
     const paginationButtons = doc.querySelectorAll('ul.pagination li.pagination__button a[href*="page="]');

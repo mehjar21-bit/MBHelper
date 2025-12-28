@@ -1,5 +1,88 @@
 import { log, logWarn, logError } from './utils.js';
 
+export const addRefreshButton = (container, cardId, onRefresh) => {
+  if (!container || !(container instanceof HTMLElement)) return;
+
+  try {
+    const existingBtn = container.querySelector('.card-refresh-btn');
+    if (existingBtn) return; // Уже добавлена
+
+    const btn = document.createElement('button');
+    btn.classList.add('card-refresh-btn');
+    btn.title = 'Обновить данные карты (без кэша)';
+    btn.innerHTML = `
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="14" height="14" fill="currentColor">
+        <path d="M17.65 6.35A7.958 7.958 0 0 0 12 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08A5.99 5.99 0 0 1 12 18c-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"/>
+      </svg>`;
+    
+    btn.style.cssText = `
+      position: absolute;
+      bottom: 5px;
+      left: 5px;
+      width: 24px;
+      height: 24px;
+      padding: 0;
+      background: rgba(0, 0, 0, 0.7);
+      border: 1px solid #4CAF50;
+      border-radius: 4px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 999;
+      transition: all 0.2s;
+    `;
+
+    btn.addEventListener('mouseenter', () => {
+      btn.style.background = 'rgba(76, 175, 80, 0.8)';
+      btn.style.transform = 'scale(1.1)';
+    });
+
+    btn.addEventListener('mouseleave', () => {
+      btn.style.background = 'rgba(0, 0, 0, 0.7)';
+      btn.style.transform = 'scale(1)';
+    });
+
+    btn.addEventListener('click', async (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      
+      btn.disabled = true;
+      btn.style.opacity = '0.5';
+      btn.innerHTML = `<span style="font-size: 10px;">⏳</span>`;
+      
+      try {
+        await onRefresh(cardId);
+        btn.innerHTML = `<span style="font-size: 10px;">✓</span>`;
+        setTimeout(() => {
+          btn.innerHTML = `
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="14" height="14" fill="currentColor">
+              <path d="M17.65 6.35A7.958 7.958 0 0 0 12 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08A5.99 5.99 0 0 1 12 18c-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"/>
+            </svg>`;
+          btn.disabled = false;
+          btn.style.opacity = '1';
+        }, 1500);
+      } catch (error) {
+        logError(`Error refreshing card ${cardId}:`, error);
+        btn.innerHTML = `<span style="font-size: 10px;">✗</span>`;
+        setTimeout(() => {
+          btn.innerHTML = `
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="14" height="14" fill="currentColor">
+              <path d="M17.65 6.35A7.958 7.958 0 0 0 12 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08A5.99 5.99 0 0 1 12 18c-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"/>
+            </svg>`;
+          btn.disabled = false;
+          btn.style.opacity = '1';
+        }, 1500);
+      }
+    });
+
+    container.style.position = 'relative';
+    container.appendChild(btn);
+  } catch (error) {
+    logError('Error adding refresh button:', error);
+  }
+};
+
 export const addTextLabel = (container, className, text, title, position, type, options = {}, context) => {
   if (!container || !(container instanceof HTMLElement)) {
       return;
