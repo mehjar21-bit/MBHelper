@@ -83,6 +83,164 @@ export const addRefreshButton = (container, cardId, onRefresh) => {
   }
 };
 
+export const addManualRefreshButton = (onRefresh) => {
+  try {
+    const existingBtn = document.querySelector('.manual-refresh-global-btn');
+    if (existingBtn) return;
+
+    let isRefreshing = false;
+    let refreshAborted = false;
+
+    const btn = document.createElement('button');
+    btn.classList.add('manual-refresh-global-btn');
+    btn.title = 'Принудительно загрузить данные для всех карт на странице';
+    btn.innerHTML = `
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="20" height="20" fill="currentColor">
+        <path d="M17.65 6.35A7.958 7.958 0 0 0 12 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08A5.99 5.99 0 0 1 12 18c-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"/>
+      </svg>
+      <span style="margin-left: 6px;">Обновить карты</span>`;
+    
+    // Отслеживаем клики по пагинации для сброса состояния
+    const resetButton = () => {
+      if (isRefreshing) {
+        refreshAborted = true;
+        isRefreshing = false;
+        btn.innerHTML = `
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="20" height="20" fill="currentColor">
+            <path d="M17.65 6.35A7.958 7.958 0 0 0 12 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08A5.99 5.99 0 0 1 12 18c-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"/>
+          </svg>
+          <span style="margin-left: 6px;">Обновить карты</span>`;
+        btn.disabled = false;
+        btn.style.opacity = '1';
+      }
+    };
+
+    // Слушаем клики по кнопкам пагинации
+    document.addEventListener('click', (e) => {
+      const paginationBtn = e.target.closest('.pagination__button a, button[data-page]');
+      if (paginationBtn) {
+        resetButton();
+      }
+    }, true);
+
+    // Наблюдаем за изменениями в пагинации
+    const paginationObserver = new MutationObserver((mutations) => {
+      for (const mutation of mutations) {
+        if (mutation.target.matches && mutation.target.matches('.pagination, [class*="pagination"]')) {
+          resetButton();
+          break;
+        }
+      }
+    });
+
+    const paginationContainer = document.querySelector('.pagination, .manga-cards, [class*="cards"]');
+    if (paginationContainer) {
+      paginationObserver.observe(paginationContainer.parentElement || document.body, {
+        childList: true,
+        subtree: true
+      });
+    }
+    
+    btn.style.cssText = `
+      position: fixed;
+      bottom: 80px;
+      right: 20px;
+      padding: 12px 20px;
+      background: linear-gradient(135deg, rgba(76, 175, 80, 0.9), rgba(56, 142, 60, 0.9));
+      border: 2px solid #4CAF50;
+      border-radius: 8px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 9999;
+      font-size: 14px;
+      font-weight: bold;
+      color: white;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+      transition: all 0.3s;
+      font-family: Arial, sans-serif;
+    `;
+
+    btn.addEventListener('mouseenter', () => {
+      btn.style.background = 'linear-gradient(135deg, rgba(76, 175, 80, 1), rgba(56, 142, 60, 1))';
+      btn.style.transform = 'scale(1.05) translateY(-2px)';
+      btn.style.boxShadow = '0 6px 16px rgba(0,0,0,0.4)';
+    });
+
+    btn.addEventListener('mouseleave', () => {
+      btn.style.background = 'linear-gradient(135deg, rgba(76, 175, 80, 0.9), rgba(56, 142, 60, 0.9))';
+      btn.style.transform = 'scale(1) translateY(0)';
+      btn.style.boxShadow = '0 4px 12px rgba(0,0,0,0.3)';
+    });
+
+    btn.addEventListener('click', async (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      
+      if (isRefreshing) return;
+      
+      isRefreshing = true;
+      refreshAborted = false;
+      btn.disabled = true;
+      btn.style.opacity = '0.6';
+      btn.innerHTML = `
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="20" height="20" fill="currentColor" style="animation: spin 1s linear infinite;">
+          <path d="M12 4V1L8 5l4 4V6c3.31 0 6 2.69 6 6 0 1.01-.25 1.97-.7 2.8l1.46 1.46A7.93 7.93 0 0 0 20 12c0-4.42-3.58-8-8-8zm0 14c-3.31 0-6-2.69-6-6 0-1.01.25-1.97.7-2.8L5.24 7.74A7.93 7.93 0 0 0 4 12c0 4.42 3.58 8 8 8v3l4-4-4-4v3z"/>
+        </svg>
+        <span style="margin-left: 6px;">Загрузка...</span>`;
+      
+      const style = document.createElement('style');
+      style.textContent = '@keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }';
+      document.head.appendChild(style);
+      
+      try {
+        await onRefresh();
+        
+        if (refreshAborted) return;
+        
+        btn.innerHTML = `
+          <span style="font-size: 18px;">✓</span>
+          <span style="margin-left: 6px;">Готово!</span>`;
+        setTimeout(() => {
+          if (refreshAborted) return;
+          btn.innerHTML = `
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="20" height="20" fill="currentColor">
+              <path d="M17.65 6.35A7.958 7.958 0 0 0 12 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08A5.99 5.99 0 0 1 12 18c-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"/>
+            </svg>
+            <span style="margin-left: 6px;">Обновить карты</span>`;
+          btn.disabled = false;
+          btn.style.opacity = '1';
+          isRefreshing = false;
+        }, 2000);
+      } catch (error) {
+        if (refreshAborted) return;
+        
+        logError('Error refreshing all cards:', error);
+        btn.innerHTML = `
+          <span style="font-size: 18px;">✗</span>
+          <span style="margin-left: 6px;">Ошибка</span>`;
+        setTimeout(() => {
+          if (refreshAborted) return;
+          btn.innerHTML = `
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="20" height="20" fill="currentColor">
+              <path d="M17.65 6.35A7.958 7.958 0 0 0 12 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08A5.99 5.99 0 0 1 12 18c-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"/>
+            </svg>
+            <span style="margin-left: 6px;">Обновить карты</span>`;
+          btn.disabled = false;
+          btn.style.opacity = '1';
+          isRefreshing = false;
+        }, 2000);
+      }
+    });
+
+    document.body.appendChild(btn);
+    log('Manual refresh button added');
+  } catch (error) {
+    logError('Error adding manual refresh button:', error);
+  }
+};
+
 export const addTextLabel = (container, className, text, title, position, type, options = {}, context) => {
   if (!container || !(container instanceof HTMLElement)) {
       return;

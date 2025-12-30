@@ -1,6 +1,6 @@
-# Скрипт для создания релиза MangaBuff Helper v3.0.3
+# Скрипт для создания релиза MangaBuff Helper v3.0.5
 
-$version = "3.0.3"
+$version = "3.0.5"
 $releaseName = "MangaBuff-Helper-v$version"
 $releaseDir = ".\release"
 $zipPath = ".\$releaseName.zip"

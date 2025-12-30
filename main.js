@@ -2,7 +2,7 @@ import { LOG_PREFIX, initialContextState, contextsSelectors, getCurrentContext }
 import { isExtensionContextValid, log, logWarn, logError, cachedElements, debounce, waitForElements } from './utils.js';
 import { setCsrfToken, csrfToken, pendingRequests } from './api.js';
 import { getSettings } from './settings.js';
-import { addExtensionSettingsButton } from './domUtils.js';
+import { addExtensionSettingsButton, addManualRefreshButton } from './domUtils.js';
 import { processCards } from './cardProcessor.js';
 import { initUserCards, handleMarketCreatePage, initStatsButtons, initPackPage } from './contextHandlers.js';
 import { setupObserver } from './observer.js';
@@ -19,6 +19,7 @@ const cleanupExtensionFeatures = () => {
         log('Observer disconnected.');
     }
 
+    document.querySelector('.manual-refresh-global-btn')?.remove();
     document.querySelector('.wishlist-toggle-btn')?.remove();
     const statButtonSelectors = [
         '.tradeOffer-wishlist-btn', '.tradeOffer-owners-btn',
@@ -105,6 +106,11 @@ const initPage = async () => {
         try {
             const { userContextStates } = await chrome.storage.sync.get(['userContextStates']);
             const savedStates = userContextStates || {};
+            log(`[DEBUG] Loading state for ${context}:`, {
+                initial: initialContextState[context],
+                saved: savedStates[context],
+                userContextStates: userContextStates
+            });
             effectiveInitialContextState = {
                 ...(initialContextState[context] || {}),
                 ...(savedStates[context] || {})
@@ -116,12 +122,20 @@ const initPage = async () => {
             const shouldShowWishlist = settings.alwaysShowWishlist || contextState[context]?.wishlist;
             const shouldShowOwners = settings.alwaysShowOwners || contextState[context]?.owners;
             const shouldProcessCards = shouldShowWishlist || shouldShowOwners;
+            
+            log(`[DEBUG] shouldProcessCards check for ${context}:`, {
+                alwaysShowWishlist: settings.alwaysShowWishlist,
+                alwaysShowOwners: settings.alwaysShowOwners,
+                contextWishlist: contextState[context]?.wishlist,
+                contextOwners: contextState[context]?.owners,
+                shouldProcessCards
+            });
 
             try {
                  switch (context) {
                       case 'userCards': await initUserCards(); break;
                       case 'marketCreate':
-                          await initStatsButtons(context, '.card-filter-form__lock-status', 'card-filter-form__lock');
+                          await initStatsButtons(context, '.card-filter-form__lock-status', 'card-filter-form__lock', effectiveInitialContextState);
                           await handleMarketCreatePage();
                           break;
                       case 'trade':
@@ -142,7 +156,7 @@ const initPage = async () => {
                               cachedElements.delete(contextsSelectors.tradeOffer);
                               await processCards('tradeOffer', settings);
                           }
-                          await initStatsButtons(context, '.trade__rank-wrapper .trade__rank', 'trade__type-card-button'); 
+                          await initStatsButtons(context, '.trade__rank-wrapper .trade__rank', 'trade__type-card-button', effectiveInitialContextState); 
                           break;
                       case 'remelt':
                       case 'market':
@@ -153,14 +167,14 @@ const initPage = async () => {
                               cachedElements.delete(contextsSelectors[context]);
                               await processCards(context, settings);
                           }
-                          await initStatsButtons(context, '.card-filter-form__lock-status', 'card-filter-form__lock');
+                          await initStatsButtons(context, '.card-filter-form__lock-status', 'card-filter-form__lock', effectiveInitialContextState);
                           break;
                       case 'auctions':
                           if (shouldProcessCards) {
                               cachedElements.delete(contextsSelectors[context]);
                               await processCards(context, settings);
                           }
-                          await initStatsButtons(context, '.card-filter-form__lock-status', 'card-filter-form__lock');
+                          await initStatsButtons(context, '.card-filter-form__lock-status', 'card-filter-form__lock', effectiveInitialContextState);
                           break;
                       case 'marketRequestView':
                          if (shouldProcessCards) {

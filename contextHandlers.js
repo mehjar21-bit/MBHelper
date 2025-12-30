@@ -189,14 +189,20 @@ export const handleMarketCreatePage = async () => {
   }
 };
 
-export const initStatsButtons = async (context, targetSelector, buttonClass) => {
+export const initStatsButtons = async (context, targetSelector, buttonClass, effectiveState = null) => {
     const targetDiv = document.querySelector(targetSelector);
     if (!targetDiv) {
         logWarn(`initStatsButtons: Target selector '${targetSelector}' not found for context '${context}'.`);
         return;
     }
     const settings = await getSettings();
-    const currentContextState = contextState[context] || initialContextState[context]; 
+    const currentContextState = effectiveState || contextState[context] || initialContextState[context];
+    log(`[DEBUG] initStatsButtons for ${context}:`, {
+        effectiveState,
+        currentContextState,
+        contextStateGlobal: contextState[context],
+        initialState: initialContextState[context]
+    }); 
 
     const buttonsConfig = [
       { name: 'wishlist', text: 'Желают', activeClass: `${buttonClass}--active`, dataAttr: `data-${context}-wishlist-btn` },
@@ -262,6 +268,13 @@ export const initStatsButtons = async (context, targetSelector, buttonClass) => 
     });
 
     const shouldProcessInitially = (settings.alwaysShowWishlist || currentContextState.wishlist) || (settings.alwaysShowOwners || currentContextState.owners);
+    log(`[DEBUG] initStatsButtons shouldProcessInitially check for ${context}:`, {
+        alwaysShowWishlist: settings.alwaysShowWishlist,
+        alwaysShowOwners: settings.alwaysShowOwners,
+        currentContextStateWishlist: currentContextState.wishlist,
+        currentContextStateOwners: currentContextState.owners,
+        shouldProcessInitially
+    });
     if (shouldProcessInitially) {
       log(`initStatsButtons: Initial processing needed for ${context}.`);
       cachedElements.delete(contextsSelectors[context]); 

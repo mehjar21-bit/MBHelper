@@ -319,7 +319,7 @@ app.get('/sync/all', async (req, res) => {
   }
 
   try {
-    const limit = Number(req.query.limit) || 1000;
+    const limit = Number(req.query.limit) || 5000; // Увеличен для ускорения синхронизации
     const offset = Number(req.query.offset) || 0;
 
     console.log(`[/sync/all] Fetching entries: offset=${offset}, limit=${limit}`);

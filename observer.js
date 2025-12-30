@@ -22,9 +22,11 @@ export const setupObserver = (context, observerCreatedCallback) => {
       case 'market':
       case 'split':
       case 'deckCreate':
-      case 'marketCreate':
       case 'marketRequestCreate':
-      case 'auctions': return; // Disable observer for auctions to prevent excessive calls
+      case 'auctions':
+      case 'marketCreate': // /market/create с пагинацией
+          targetSelector = '.card-filter-list__items'; // Правильный контейнер для пагинации
+          break;
       default:
           logWarn(`Observer: No target selector defined for context ${context}.`);
           return;
@@ -45,10 +47,10 @@ export const setupObserver = (context, observerCreatedCallback) => {
       return;
   }
 
-  observeNode(targetNode, context, observerCreatedCallback);
+  observeNode(targetNode, context, targetSelector, observerCreatedCallback);
 };
 
-const observeNode = (targetNode, context, observerCreatedCallback) => {
+const observeNode = (targetNode, context, targetSelector, observerCreatedCallback) => {
     const observerCallback = debounce(async (mutations) => {
         if (!isExtensionContextValid()) {
             logWarn('Observer: Extension context lost, skipping mutation processing.');
@@ -60,6 +62,26 @@ const observeNode = (targetNode, context, observerCreatedCallback) => {
 
         for (const mutation of mutations) {
             if (mutation.type === 'childList') {
+                // Игнорируем изменения от наших собственных labels
+                const hasAddedNodes = mutation.addedNodes.length > 0;
+                const hasRemovedNodes = mutation.removedNodes.length > 0;
+                
+                const isLabelChange = (hasAddedNodes || hasRemovedNodes) && 
+                    (!hasAddedNodes || Array.from(mutation.addedNodes).every(node => 
+                        node.classList?.contains('wishlist-warning') || 
+                        node.classList?.contains('owners-count') ||
+                        node.classList?.contains('manual-refresh-btn')
+                    )) && 
+                    (!hasRemovedNodes || Array.from(mutation.removedNodes).every(node => 
+                        node.classList?.contains('wishlist-warning') || 
+                        node.classList?.contains('owners-count') ||
+                        node.classList?.contains('manual-refresh-btn')
+                    ));
+                
+                if (isLabelChange) {
+                    continue; // Пропускаем мутации от наших labels
+                }
+                
                 const addedNodesMatch = Array.from(mutation.addedNodes).some(node => node.matches?.(cardSelector));
                 const removedNodesMatch = Array.from(mutation.removedNodes).some(node => node.matches?.(cardSelector));
 
@@ -67,7 +89,16 @@ const observeNode = (targetNode, context, observerCreatedCallback) => {
                     cardListChanged = true;
                     break;
                 }
-                if (context === 'userCards' && (mutation.target === targetNode || mutation.target.closest(targetSelector))) {
+                
+                // Для контекстов с пагинацией проверяем любые изменения в контейнере
+                if (['remelt', 'market', 'split', 'deckCreate', 'marketRequestCreate', 'auctions', 'marketCreate'].includes(context)) {
+                    if (hasAddedNodes || hasRemovedNodes) {
+                        cardListChanged = true;
+                        break;
+                    }
+                }
+                
+                if (context === 'userCards' && (mutation.target === targetNode || mutation.target.closest('.manga-cards'))) {
                      if (mutation.addedNodes.length > 0 || mutation.removedNodes.length > 0) {
                          cardListChanged = true;
                          break;
@@ -103,7 +134,7 @@ const observeNode = (targetNode, context, observerCreatedCallback) => {
                 oldLabels.forEach(label => label.remove());
             }
         }
-    }, 5000);
+    }, 300); // Уменьшил debounce для быстрой реакции на пагинацию
 
     const observer = new MutationObserver(observerCallback);
     observer.observe(targetNode, {
