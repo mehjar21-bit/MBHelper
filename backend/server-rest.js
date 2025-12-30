@@ -13,7 +13,8 @@ const SUPABASE_KEY = process.env.SUPABASE_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6Ik
 // CORS конфиг (разрешаем расширение и локальные хосты)
 const allowedOrigins = [
   'http://localhost:3000',
-  'http://localhost:5173'
+  'http://localhost:5173',
+  'https://mangabuff.ru'
 ];
 
 app.use(cors({
