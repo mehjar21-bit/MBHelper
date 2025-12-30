@@ -225,7 +225,7 @@ export const syncCachePullAll = async (limit = 500000) => {
 
     let allEntries = [];
     let offset = 0;
-    const batchSize = 5000; // Увеличен для ускорения загрузки больших объемов
+    const batchSize = 1000; // Supabase API limit
     
     // Запрашиваем данные порциями, пока не получим все
     while (offset < limit) {
