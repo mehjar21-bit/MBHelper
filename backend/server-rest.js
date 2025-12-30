@@ -34,21 +34,25 @@ app.use(cors({
 // Явно отвечаем на preflight
 app.options('*', cors());
 
-app.use(express.json({ limit: '10mb' }));
+app.use(express.json({ limit: '1mb' }));
 
-// Простое логирование запросов
-app.use((req, res, next) => {
-  const origin = req.headers.origin || 'n/a';
-  console.log(`[REQ] ${req.method} ${req.url} origin=${origin}`);
-  next();
-});
+// Простое логирование запросов (только в dev)
+if (process.env.NODE_ENV !== 'production') {
+  app.use((req, res, next) => {
+    const origin = req.headers.origin || 'n/a';
+    console.log(`[REQ] ${req.method} ${req.url} origin=${origin}`);
+    next();
+  });
+}
 
 let dbConnected = false;
 
 // Инициализация БД (проверяем доступность REST и таблицы)
 const initializeDatabase = async () => {
   try {
-    console.log('Attempting to connect to Supabase...');
+    if (process.env.NODE_ENV !== 'production') {
+      console.log('Attempting to connect to Supabase...');
+    }
     
     const response = await axios.get(
       `${SUPABASE_URL}/rest/v1/cache_entries?select=key&limit=1`,

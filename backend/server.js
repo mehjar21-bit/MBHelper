@@ -13,7 +13,7 @@ app.use(cors({
   allowedHeaders: ['Content-Type']
 }));
 
-app.use(express.json({ limit: '10mb' }));
+app.use(express.json({ limit: '1mb' }));
 
 // PostgreSQL подключение
 const pool = new Pool({
@@ -32,7 +32,9 @@ const initializeDatabase = async () => {
   try {
     // Тест подключения
     const result = await pool.query('SELECT NOW()');
-    console.log('✅ Database connected:', result.rows[0].now);
+    if (process.env.NODE_ENV !== 'production') {
+      console.log('✅ Database connected:', result.rows[0].now);
+    }
 
     await pool.query(`
       CREATE TABLE IF NOT EXISTS cache_entries (
@@ -47,7 +49,9 @@ const initializeDatabase = async () => {
       CREATE INDEX IF NOT EXISTS idx_cache_key ON cache_entries(key);
       CREATE INDEX IF NOT EXISTS idx_cache_timestamp ON cache_entries(timestamp);
     `);
-    console.log('✅ Database tables initialized');
+    if (process.env.NODE_ENV !== 'production') {
+      console.log('✅ Database tables initialized');
+    }
     dbConnected = true;
   } catch (err) {
     console.warn('⚠️  Database connection failed. Running in demo mode.');
@@ -222,13 +226,17 @@ const startServer = async () => {
     await initializeDatabase();
     
     app.listen(PORT, () => {
-      console.log(`\n🚀 Cache server running on http://localhost:${PORT}`);
-      console.log(`Database: ${dbConnected ? '✅ Connected' : '⚠️  Demo mode (no database)'}\n`);
-      console.log('Available endpoints:');
-      console.log('  POST /sync/push  - Send cache data');
-      console.log('  POST /sync/pull  - Get cache data');
-      console.log('  GET  /cache/stats - Get statistics');
-      console.log('  GET  /health     - Health check\n');
+      if (process.env.NODE_ENV !== 'production') {
+        console.log(`\n🚀 Cache server running on http://localhost:${PORT}`);
+        console.log(`Database: ${dbConnected ? '✅ Connected' : '⚠️  Demo mode (no database)'}\n`);
+        console.log('Available endpoints:');
+        console.log('  POST /sync/push  - Send cache data');
+        console.log('  POST /sync/pull  - Get cache data');
+        console.log('  GET  /cache/stats - Get statistics');
+        console.log('  GET  /health     - Health check\n');
+      } else {
+        console.log(`Server running on port ${PORT}`);
+      }
     });
   } catch (error) {
     console.error('Failed to start server:', error);
