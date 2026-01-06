@@ -1,7 +1,7 @@
 import { log, logError, logWarn, isExtensionContextValid } from './utils.js';
 import { SYNC_SERVER_URL } from './config.js';
 const SYNC_BATCH_SIZE = 100; // Отправляем по 100 записей за раз
-const SYNC_INTERVAL = 30 * 60 * 1000; // Синхронизация каждые 30 минут
+const SYNC_INTERVAL = 6 * 60 * 60 * 1000; // Синхронизация каждые 6 часов (экономия трафика)
 
 /**
  * Отправляет конкретные записи на сервер (для фонового обновления)
@@ -68,11 +68,6 @@ export const syncCacheToServer = async () => {
     }
 
     log(`Syncing ${dataToSync.length} new/updated entries to server...`);
-    
-    // Выводим примеры данных
-    if (dataToSync.length > 0) {
-      log(`Sample entries: ${dataToSync.slice(0, 3).map(e => e.key).join(', ')}`);
-    }
 
     let totalProcessed = 0;
     let totalSkipped = 0;
@@ -82,7 +77,6 @@ export const syncCacheToServer = async () => {
       const batch = dataToSync.slice(i, i + SYNC_BATCH_SIZE);
       
       try {
-        log(`→ PUSH batch ${Math.floor(i / SYNC_BATCH_SIZE) + 1}: ${batch.length} entries to ${SYNC_SERVER_URL}`);
         const response = await fetch(`${SYNC_SERVER_URL}/sync/push`, {
           method: 'POST',
           headers: {
@@ -98,13 +92,8 @@ export const syncCacheToServer = async () => {
         }
         
         const result = await response.json();
-        const processed = result.processed || 0;
-        const skipped = result.skipped || 0;
-        
-        totalProcessed += processed;
-        totalSkipped += skipped;
-        
-        log(`✔ PUSH ok batch ${Math.floor(i / SYNC_BATCH_SIZE) + 1}/${Math.ceil(dataToSync.length / SYNC_BATCH_SIZE)} - updated: ${processed}, skipped: ${skipped}`);
+        totalProcessed += (result.processed || 0);
+        totalSkipped += (result.skipped || 0);
       } catch (error) {
         logError(`Error syncing batch:`, error);
       }
@@ -141,7 +130,6 @@ export const syncCacheFromServer = async (cardIds = []) => {
     for (let i = 0; i < cardIds.length; i += PULL_BATCH_SIZE) {
       const batch = cardIds.slice(i, i + PULL_BATCH_SIZE);
       
-      log(`→ PULL batch ${Math.floor(i / PULL_BATCH_SIZE) + 1}: ${batch.length} ids from ${SYNC_SERVER_URL}`);
       const response = await fetch(`${SYNC_SERVER_URL}/sync/pull`, {
         method: 'POST',
         headers: {
@@ -202,13 +190,11 @@ export const syncCacheFromServer = async (cardIds = []) => {
       totalSkipped += skipped;
       
       if (tooOld > 0) {
-        log(`⚠️ Batch ${Math.floor(i / PULL_BATCH_SIZE) + 1}: rejected ${tooOld} old entries`);
+        log(`Rejected ${tooOld} old entries`);
       }
-      
-      log(`✔ PULL batch ${Math.floor(i / PULL_BATCH_SIZE) + 1}: updated ${updated}, skipped ${skipped}`);
     }
     
-    log(`Pull completed: updated ${totalUpdated}, skipped ${totalSkipped} (local fresher) entries`);
+    log(`Pull completed: ${totalUpdated} updated, ${totalSkipped} skipped`);
   } catch (error) {
     logError('Error fetching cache from server:', error);
   }
@@ -347,8 +333,8 @@ export const compareAndUpdateCache = async (key, serverData) => {
  */
 export const initPeriodicSync = () => {
   // Создаём alarm для периодической синхронизации
-  chrome.alarms.create('syncCache', { periodInMinutes: 30 });
-  log('Periodic sync initialized (every 30 minutes)');
+  chrome.alarms.create('syncCache', { periodInMinutes: 360 }); // Каждые 6 часов
+  log('Periodic sync initialized (every 6 hours)');
 };
 
 /**

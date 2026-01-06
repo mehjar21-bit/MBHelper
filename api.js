@@ -1,7 +1,6 @@
 // api.js (С ОПТИМИЗАЦИЕЙ ПО ПАГИНАЦИИ)
 import { isExtensionContextValid, log, logWarn, logError } from './utils.js';
 import { MAX_CONCURRENT_REQUESTS } from './config.js';
-import { pushToSync } from './sync.js';
 
 export const pendingRequests = new Map();
 export let activeRequests = 0;
@@ -20,30 +19,11 @@ export const forceRefreshCard = async (cardId) => {
     await chrome.storage.local.remove([`wishlist_${cardId}`, `owners_${cardId}`]);
     log(`Cache cleared for card ${cardId}`);
 
-    // Получаем свежие данные
+    // Получаем свежие данные (сохранятся локально, отправятся на сервер по расписанию)
     const [wishlistData, ownersData] = await Promise.all([
       getUserCount('wishlist', cardId),
       getUserCount('owners', cardId)
     ]);
-
-    // Отправляем на сервер синхронизации
-    if (wishlistData?.count !== undefined) {
-      await pushToSync([{
-        type: 'wishlist',
-        cardId: cardId,
-        count: wishlistData.count,
-        timestamp: wishlistData.timestamp
-      }]);
-    }
-
-    if (ownersData?.count !== undefined) {
-      await pushToSync([{
-        type: 'owners',
-        cardId: cardId,
-        count: ownersData.count,
-        timestamp: ownersData.timestamp
-      }]);
-    }
 
     log(`Card ${cardId} refreshed successfully`);
     return { wishlist: wishlistData?.count ?? 0, owners: ownersData?.count ?? 0 };
@@ -209,14 +189,6 @@ const getUserCount = async (type, cardId, retries = 2) => {
           try {
             await chrome.storage.local.set({ [cacheKey]: { count: total, timestamp, ttl } });
             log(`Fetched (Optimized) and cached ${type} count for card ${cardId}: ${total} (TTL: ${ttl / (24 * 60 * 60 * 1000)} days)`);
-            
-            // Сразу отправляем на сервер (фоновая синхронизация)
-            try {
-              const { pushToSync } = await import('./sync.js');
-              await pushToSync([{ key: cacheKey, count: total, timestamp }]);
-            } catch (syncError) {
-              logWarn(`Could not sync new data for ${cacheKey}:`, syncError);
-            }
           } catch (storageError) {
             logError(`Error setting local storage for cache key ${cacheKey}:`, storageError);
           }
@@ -256,20 +228,9 @@ const backgroundRefresh = async (type, cardId, cacheKey) => {
     const oldData = await chrome.storage.local.get([cacheKey]).then(r => r[cacheKey]);
     await chrome.storage.local.remove([cacheKey]);
     
-    // Делаем реальный запрос
+    // Делаем реальный запрос (данные сохранятся локально, отправятся по расписанию)
     const result = await getUserCount(type, cardId, 0);
-    
-    // Отправляем обновленные данные на сервер синхронизации
-    if (result && typeof result === 'object' && result.count !== undefined) {
-      const timestamp = Date.now();
-      try {
-        const { pushToSync } = await import('./sync.js');
-        await pushToSync([{ key: cacheKey, count: result.count, timestamp }]);
-        log(`Background refresh completed and synced for ${cacheKey}: ${result.count}`);
-      } catch (syncError) {
-        logWarn(`Could not sync background refresh for ${cacheKey}:`, syncError);
-      }
-    }
+    log(`Background refresh completed for ${cacheKey}`);
   } catch (error) {
     logError(`Background refresh failed for ${cacheKey}:`, error);
   }
