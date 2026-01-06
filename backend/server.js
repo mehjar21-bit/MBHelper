@@ -2,12 +2,25 @@ require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
 const compression = require('compression');
+const rateLimit = require('express-rate-limit');
 const { Pool } = require('pg');
 
 const app = express();
 
 // Включаем gzip сжатие для экономии трафика
 app.use(compression());
+
+// Rate limiting: максимум 200 запросов в час с одного IP
+const limiter = rateLimit({
+  windowMs: 60 * 60 * 1000, // 1 час
+  max: 200, // макс запросов
+  message: { error: 'Too many requests, please try again later' },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+app.use('/sync/', limiter);
+
 const PORT = process.env.PORT || 3000;
 
 // CORS конфиг
@@ -170,6 +183,18 @@ app.post('/sync/pull', async (req, res) => {
     });
   }
 
+  // Проверка версии расширения
+  const clientVersion = req.headers['x-extension-version'];
+  const minVersion = '3.0.6';
+  
+  if (!clientVersion || clientVersion < minVersion) {
+    return res.status(426).json({ 
+      error: 'Extension version too old. Please update to v' + minVersion + ' or later.',
+      minVersion,
+      currentVersion: clientVersion
+    });
+  }
+
   try {
     const { cardIds } = req.body;
 
@@ -231,6 +256,16 @@ app.get('/cache/stats', async (req, res) => {
     console.error('Error in /cache/stats:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
+});
+
+/**
+ * GET /sync/all - DEPRECATED - Используйте /sync/pull
+ */
+app.get('/sync/all', (req, res) => {
+  return res.status(410).json({ 
+    error: 'This endpoint is deprecated. Please update your extension to v3.0.6 or later.',
+    message: 'Use POST /sync/pull instead'
+  });
 });
 
 /**
