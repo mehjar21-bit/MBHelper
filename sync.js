@@ -11,9 +11,13 @@ export const pushToSync = async (entries) => {
   if (!entries || entries.length === 0) return;
 
   try {
+    const manifest = chrome.runtime.getManifest();
     const response = await fetch(`${SYNC_SERVER_URL}/sync/push`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 
+        'Content-Type': 'application/json',
+        'X-Extension-Version': manifest.version
+      },
       body: JSON.stringify({ entries })
     });
 
@@ -77,10 +81,12 @@ export const syncCacheToServer = async () => {
       const batch = dataToSync.slice(i, i + SYNC_BATCH_SIZE);
       
       try {
+        const manifest = chrome.runtime.getManifest();
         const response = await fetch(`${SYNC_SERVER_URL}/sync/push`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
+            'X-Extension-Version': manifest.version
           },
           body: JSON.stringify({ entries: batch })
         });

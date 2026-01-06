@@ -86,6 +86,18 @@ app.post('/sync/push', async (req, res) => {
     });
   }
 
+  // Проверка версии расширения
+  const clientVersion = req.headers['x-extension-version'];
+  const minVersion = '3.0.6'; // Минимальная поддерживаемая версия
+  
+  if (clientVersion && clientVersion < minVersion) {
+    return res.status(426).json({ 
+      error: 'Extension version too old. Please update to v' + minVersion + ' or later.',
+      minVersion,
+      currentVersion: clientVersion
+    });
+  }
+
   try {
     const { entries } = req.body;
 
