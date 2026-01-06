@@ -23,8 +23,9 @@ app.use(express.json({ limit: '1mb' }));
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL || 'postgresql://user:password@localhost/mangabuff_cache',
   ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
-  max: 5, // Максимум 5 соединений вместо 10 по умолчанию
-  idleTimeoutMillis: 30000, // Закрывать неактивные соединения через 30 секунд
+  max: 2, // Минимальный pool для экономии памяти
+  min: 0, // Не держать соединения когда нет запросов
+  idleTimeoutMillis: 10000, // Закрывать через 10 секунд
   connectionTimeoutMillis: 5000
 });
 
