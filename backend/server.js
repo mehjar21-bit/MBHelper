@@ -278,6 +278,21 @@ const startServer = async () => {
   }
 };
 
+// Автоматическая очистка раз в сутки
+setInterval(async () => {
+  if (dbConnected) {
+    try {
+      const thirtyDaysAgo = Date.now() - (30 * 24 * 60 * 60 * 1000);
+      const result = await pool.query('DELETE FROM cache_entries WHERE timestamp < $1', [thirtyDaysAgo]);
+      if (result.rowCount > 0) {
+        console.log(`Auto-cleanup: deleted ${result.rowCount} old entries`);
+      }
+    } catch (error) {
+      console.error('Auto-cleanup error:', error);
+    }
+  }
+}, 24 * 60 * 60 * 1000); // Каждые 24 часа
+
 // Graceful shutdown
 process.on('SIGTERM', async () => {
   console.log('SIGTERM received, closing connections...');
