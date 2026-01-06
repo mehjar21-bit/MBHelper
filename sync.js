@@ -1,7 +1,34 @@
 import { log, logError, logWarn, isExtensionContextValid } from './utils.js';
 import { SYNC_SERVER_URL } from './config.js';
 const SYNC_BATCH_SIZE = 100; // Отправляем по 100 записей за раз
-const SYNC_INTERVAL = 6 * 60 * 60 * 1000; // Синхронизация каждые 6 часов (экономия трафика)
+const PUSH_INTERVAL = 2 * 60 * 60 * 1000; // PUSH каждые 2 часа
+const PULL_INTERVAL = 6 * 60 * 60 * 1000; // PULL каждые 6 часов
+const AUTO_PUSH_THRESHOLD = 50; // Автоматический PUSH при накоплении 50+ записей
+
+/**
+ * Проверяет количество накопленных данных и автоматически запускает PUSH если >= порога
+ */
+export const checkAndAutoPush = async () => {
+  if (!isExtensionContextValid()) return;
+
+  try {
+    const allData = await chrome.storage.local.get(null);
+    const lastSyncTime = allData._lastSyncTime || 0;
+
+    const pendingEntries = Object.entries(allData)
+      .filter(([key, value]) => {
+        if (!key.startsWith('owners_') && !key.startsWith('wishlist_')) return false;
+        return value && value.timestamp && value.timestamp > lastSyncTime;
+      });
+
+    if (pendingEntries.length >= AUTO_PUSH_THRESHOLD) {
+      log(`🚀 Auto-PUSH: ${pendingEntries.length} pending entries (threshold: ${AUTO_PUSH_THRESHOLD})`);
+      await syncCacheToServer();
+    }
+  } catch (error) {
+    logError('Error in checkAndAutoPush:', error);
+  }
+};
 
 /**
  * Отправляет конкретные записи на сервер (для фонового обновления)
@@ -69,6 +96,12 @@ export const syncCacheToServer = async () => {
     if (dataToSync.length === 0) {
       log('No new data to sync (all entries already synced)');
       return;
+    }
+
+    // Проверяем автоматический PUSH при накоплении
+    const isForcedPush = dataToSync.length >= AUTO_PUSH_THRESHOLD;
+    if (isForcedPush) {
+      log(`🚀 Auto-PUSH triggered: ${dataToSync.length} entries accumulated (threshold: ${AUTO_PUSH_THRESHOLD})`);
     }
 
     log(`Syncing ${dataToSync.length} new/updated entries to server...`);
@@ -338,27 +371,32 @@ export const compareAndUpdateCache = async (key, serverData) => {
  * Инициализирует периодическую синхронизацию
  */
 export const initPeriodicSync = () => {
-  // Создаём alarm для периодической синхронизации
-  chrome.alarms.create('syncCache', { periodInMinutes: 360 }); // Каждые 6 часов
-  log('Periodic sync initialized (every 6 hours)');
+  // PUSH каждые 2 часа
+  chrome.alarms.create('syncPush', { periodInMinutes: 120 });
+  // PULL каждые 6 часов
+  chrome.alarms.create('syncPull', { periodInMinutes: 360 });
+  log('Periodic sync initialized: PUSH every 2h, PULL every 6h');
 };
 
 /**
  * Обработчик alarm для синхронизации
  */
 export const handleSyncAlarm = async (alarm) => {
-  if (alarm.name === 'syncCache') {
-    log('Sync alarm triggered - syncing both ways');
+  if (alarm.name === 'syncPush') {
+    log('⬆️ PUSH alarm triggered - sending local data to server');
     try {
-      // Сначала отправляем свои данные
       await syncCacheToServer();
-      
-      // Затем получаем все данные с сервера (обновляем локальный кеш)
-      await syncCachePullAll();
-      
-      log('Bidirectional sync completed via alarm');
+      log('PUSH completed via alarm');
     } catch (error) {
-      logError('Error in sync alarm:', error);
+      logError('Error in PUSH alarm:', error);
+    }
+  } else if (alarm.name === 'syncPull') {
+    log('⬇️ PULL alarm triggered - fetching data from server');
+    try {
+      await syncCachePullAll();
+      log('PULL completed via alarm');
+    } catch (error) {
+      logError('Error in PULL alarm:', error);
     }
   }
 };
@@ -369,6 +407,7 @@ if (typeof self !== 'undefined') {
     syncCacheToServer,
     syncCacheFromServer,
     syncCachePullAll,
+    checkAndAutoPush,
     initPeriodicSync,
     handleSyncAlarm,
   };
@@ -379,6 +418,7 @@ export default {
   syncCacheToServer,
   syncCacheFromServer,
   syncCachePullAll,
+  checkAndAutoPush,
   compareAndUpdateCache,
   initPeriodicSync,
   handleSyncAlarm
