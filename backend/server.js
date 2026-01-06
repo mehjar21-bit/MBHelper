@@ -1,9 +1,13 @@
 require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
+const compression = require('compression');
 const { Pool } = require('pg');
 
 const app = express();
+
+// Включаем gzip сжатие для экономии трафика
+app.use(compression());
 const PORT = process.env.PORT || 3000;
 
 // CORS конфиг
@@ -18,7 +22,10 @@ app.use(express.json({ limit: '1mb' }));
 // PostgreSQL подключение
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL || 'postgresql://user:password@localhost/mangabuff_cache',
-  ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false
+  ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
+  max: 5, // Максимум 5 соединений вместо 10 по умолчанию
+  idleTimeoutMillis: 30000, // Закрывать неактивные соединения через 30 секунд
+  connectionTimeoutMillis: 5000
 });
 
 pool.on('error', (err) => {
@@ -49,6 +56,10 @@ const initializeDatabase = async () => {
       CREATE INDEX IF NOT EXISTS idx_cache_key ON cache_entries(key);
       CREATE INDEX IF NOT EXISTS idx_cache_timestamp ON cache_entries(timestamp);
     `);
+    
+    // Автоочистка старых записей (старше 30 дней)
+    const thirtyDaysAgo = Date.now() - (30 * 24 * 60 * 60 * 1000);
+    await pool.query('DELETE FROM cache_entries WHERE timestamp < $1', [thirtyDaysAgo]);
     if (process.env.NODE_ENV !== 'production') {
       console.log('✅ Database tables initialized');
     }
@@ -205,6 +216,28 @@ app.get('/cache/stats', async (req, res) => {
     });
   } catch (error) {
     console.error('Error in /cache/stats:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+/**
+ * POST /cache/cleanup - Очистка старых записей
+ */
+app.post('/cache/cleanup', async (req, res) => {
+  if (!dbConnected) {
+    return res.status(503).json({ error: 'Database not connected' });
+  }
+
+  try {
+    const thirtyDaysAgo = Date.now() - (30 * 24 * 60 * 60 * 1000);
+    const result = await pool.query('DELETE FROM cache_entries WHERE timestamp < $1 RETURNING id', [thirtyDaysAgo]);
+    
+    res.json({ 
+      success: true,
+      deleted: result.rowCount
+    });
+  } catch (error) {
+    console.error('Error in /cache/cleanup:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
