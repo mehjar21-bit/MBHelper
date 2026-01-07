@@ -2,7 +2,6 @@ require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
 const axios = require('axios');
-const rateLimit = require('express-rate-limit');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -307,39 +306,49 @@ app.post('/sync/pull', async (req, res) => {
 });
 
 /**
- * GET /sync/all - Получить все записи (строгий rate limit: 1 раз в 10 минут)
+ * GET /sync/all - Получить все записи (с лимитом)
  */
-const syncAllLimiter = rateLimit({
-  windowMs: 10 * 60 * 1000, // 10 минут
-  max: 1, // только 1 запрос
-  message: { error: 'Sync all is limited to once per 10 minutes. Please wait.' },
-  standardHeaders: true,
-  legacyHeaders: false,
-});
+app.get('/sync/all', async (req, res) => {
+  if (!dbConnected) {
+    console.warn('[/sync/all] Database not connected, returning empty array');
+    return res.status(200).json({
+      success: false,
+      error: 'Database not connected. Check SUPABASE_URL and SUPABASE_KEY',
+      entries: []
+    });
+  }
 
-app.get('/sync/all', syncAllLimiter, async (req, res) => {
   try {
-    const limit = Math.min(Number(req.query.limit) || 1000, 10000);
+    const limit = Number(req.query.limit) || 1000; // Supabase API limit
     const offset = Number(req.query.offset) || 0;
 
-    const { data, error } = await supabase
-      .from('cache_entries')
-      .select('key, count, timestamp')
-      .order('updated_at', { ascending: false })
-      .range(offset, offset + limit - 1);
+    console.log(`[/sync/all] Fetching entries: offset=${offset}, limit=${limit}`);
 
-    if (error) {
-      console.error('[/sync/all] Error:', error);
-      return res.status(500).json({ error: 'Failed to fetch data' });
+    const response = await axios.get(
+      `${SUPABASE_URL}/rest/v1/cache_entries?select=key,count,timestamp&limit=${limit}&offset=${offset}`,
+      {
+        headers: {
+          'apikey': SUPABASE_KEY,
+          'Authorization': `Bearer ${SUPABASE_KEY}`,
+          'Prefer': 'count=exact'
+        },
+        validateStatus: () => true
+      }
+    );
+
+    if (response.status === 404) {
+      return res.status(503).json({ error: 'Table cache_entries missing', entries: [] });
     }
 
-    res.json({
-      success: true,
-      entries: data || []
+    console.log(`[/sync/all] Returning ${response.data?.length || 0} entries (status: ${response.status})`);
+
+    return res.status(response.status).json({
+      success: response.status >= 200 && response.status < 300,
+      entries: response.data || []
     });
   } catch (error) {
-    console.error('[/sync/all] Exception:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    console.error('Error in /sync/all:', error.message);
+    return res.status(500).json({ error: 'Internal server error', entries: [] });
   }
 });
 

@@ -27,7 +27,7 @@ const PORT = process.env.PORT || 3000;
 app.use(cors({
   origin: ['chrome-extension://*', 'http://localhost:3000'],
   methods: ['GET', 'POST', 'PUT'],
-  allowedHeaders: ['Content-Type', 'X-Extension-Version']
+  allowedHeaders: ['Content-Type']
 }));
 
 app.use(express.json({ limit: '1mb' }));
@@ -259,44 +259,13 @@ app.get('/cache/stats', async (req, res) => {
 });
 
 /**
- * GET /sync/all - Получить все записи (строгий rate limit: 1 раз в 10 минут)
+ * GET /sync/all - DEPRECATED - Используйте /sync/pull
  */
-const syncAllLimiter = rateLimit({
-  windowMs: 10 * 60 * 1000, // 10 минут
-  max: 1, // только 1 запрос
-  message: { error: 'Sync all is limited to once per 10 minutes. Please wait.' },
-  standardHeaders: true,
-  legacyHeaders: false,
-});
-
-app.get('/sync/all', syncAllLimiter, async (req, res) => {
-  if (!dbConnected) {
-    return res.status(503).json({ 
-      error: 'Database not connected',
-      entries: []
-    });
-  }
-
-  try {
-    const limit = Math.min(Number(req.query.limit) || 1000, 1000);
-    const offset = Number(req.query.offset) || 0;
-
-    const result = await pool.query(
-      `SELECT key, count, timestamp 
-       FROM cache_entries 
-       ORDER BY updated_at DESC
-       LIMIT $1 OFFSET $2;`,
-      [limit, offset]
-    );
-
-    res.json({
-      success: true,
-      entries: result.rows
-    });
-  } catch (error) {
-    console.error('Error in /sync/all:', error);
-    res.status(500).json({ error: 'Internal server error' });
-  }
+app.get('/sync/all', (req, res) => {
+  return res.status(410).json({ 
+    error: 'This endpoint is deprecated. Please update your extension to v3.0.6 or later.',
+    message: 'Use POST /sync/pull instead'
+  });
 });
 
 /**
