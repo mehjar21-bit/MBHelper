@@ -41,6 +41,9 @@ app.use(express.json({ limit: '1mb' }));
 // Включаем gzip сжатие для экономии трафика
 app.use(compression());
 
+// Trust proxy для Railway/Heroku (чтобы express-rate-limit корректно работал)
+app.set('trust proxy', 1);
+
 // Rate limiting: максимум 200 запросов/час по маршрутам синхронизации
 const limiter = rateLimit({
   windowMs: 60 * 60 * 1000,
