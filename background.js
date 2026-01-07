@@ -1,4 +1,4 @@
-import { syncCacheToServer, syncCacheFromServer, initPeriodicSync, handleSyncAlarm } from './sync.js';
+import { syncCacheToServer, syncCacheFromServer, syncCachePullAll, initPeriodicSync, handleSyncAlarm } from './sync.js';
 
 const BASE_URL = 'https://mangabuff.ru';
 const log = (message, ...args) => console.log(`[Background] ${message}`, ...args);
@@ -144,13 +144,10 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     if (message.action === 'triggerSync') {
         log('Manual sync triggered from interface');
         
-        (async () => {
-          try {
-            // PUSH локальных изменений
-            await syncCacheToServer();
-            
-            // Получаем все card IDs из локального хранилища для точечного PULL
-            const allData = await chrome.storage.local.get(null);
+        Promise.all([
+          syncCacheToServer(),
+          // Получаем все card IDs из локального хранилища для PULL
+          chrome.storage.local.get(null).then(allData => {
             const cardIds = Object.keys(allData)
               .filter(key => key.startsWith('owners_') || key.startsWith('wishlist_'))
               .map(key => {
@@ -158,25 +155,28 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                 return match ? parseInt(match[1], 10) : null;
               })
               .filter(id => id !== null);
-
+                
+            // Удаляем дубликаты
             const uniqueCardIds = [...new Set(cardIds)];
-
+                
             if (uniqueCardIds.length > 0) {
               log(`Syncing ${uniqueCardIds.length} card IDs from interface`);
-              await syncCacheFromServer(uniqueCardIds);
-            } else {
-              // Если локального кэша нет — делаем полный PULL
-              log('No local card IDs found, performing full pull');
-              await syncCacheFromServer([]);
+              return syncCacheFromServer(uniqueCardIds);
             }
-            
-            log('Manual sync completed');
-            sendResponse({ success: true, message: 'Sync completed' });
-          } catch (error) {
-            logError('Manual sync error:', error);
-            sendResponse({ success: false, error: error.message });
-          }
-        })();
+            // Если нет локальных данных — тянем всё с сервера (для новых пользователей)
+            log('No local card IDs, pulling all cache from server');
+            return syncCachePullAll();
+          })
+        ]).then(() => {
+          // После обычного PULL гарантированно вытягиваем весь кеш (для новых устройств/пользователей)
+          return syncCachePullAll();
+        }).then(() => {
+          log('Manual sync completed');
+          sendResponse({ success: true, message: 'Sync completed' });
+        }).catch(error => {
+          logError('Manual sync error:', error);
+          sendResponse({ success: false, error: error.message });
+        });
         
         return true; // Указываем что ответ будет асинхронным
     }
