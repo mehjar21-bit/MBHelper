@@ -2,6 +2,8 @@ require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
 const axios = require('axios');
+const compression = require('compression');
+const rateLimit = require('express-rate-limit');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -35,6 +37,19 @@ app.use(cors({
 app.options('*', cors());
 
 app.use(express.json({ limit: '1mb' }));
+
+// Включаем gzip сжатие для экономии трафика
+app.use(compression());
+
+// Rate limiting: максимум 200 запросов/час по маршрутам синхронизации
+const limiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  max: 200,
+  message: { error: 'Too many requests, please try again later' },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+app.use('/sync/', limiter);
 
 // Простое логирование запросов (только в dev)
 if (process.env.NODE_ENV !== 'production') {
@@ -95,6 +110,16 @@ const initializeDatabase = async () => {
  * POST /sync/push - Отправить данные на сервер
  */
 app.post('/sync/push', async (req, res) => {
+  // Проверка версии расширения
+  const clientVersion = req.headers['x-extension-version'];
+  const minVersion = '3.0.6';
+  if (clientVersion && clientVersion < minVersion) {
+    return res.status(426).json({
+      error: 'Extension version too old. Please update to v' + minVersion + ' or later.',
+      minVersion,
+      currentVersion: clientVersion,
+    });
+  }
   if (!dbConnected) {
     return res.status(503).json({ 
       error: 'Database not connected',
@@ -261,6 +286,16 @@ app.post('/sync/push', async (req, res) => {
  * POST /sync/pull - Получить данные для карт
  */
 app.post('/sync/pull', async (req, res) => {
+  // Проверка версии расширения
+  const clientVersion = req.headers['x-extension-version'];
+  const minVersion = '3.0.6';
+  if (!clientVersion || clientVersion < minVersion) {
+    return res.status(426).json({
+      error: 'Extension version too old. Please update to v' + minVersion + ' or later.',
+      minVersion,
+      currentVersion: clientVersion,
+    });
+  }
   if (!dbConnected) {
     return res.status(503).json({ 
       error: 'Database not connected',
@@ -310,50 +345,16 @@ app.post('/sync/pull', async (req, res) => {
 });
 
 /**
- * GET /sync/all - Получить все записи (с лимитом)
+ * GET /sync/all - DEPRECATED. Используйте POST /sync/pull.
  */
-app.get('/sync/all', async (req, res) => {
-  if (!dbConnected) {
-    console.warn('[/sync/all] Database not connected, returning empty array');
-    return res.status(200).json({
-      success: false,
-      error: 'Database not connected. Check SUPABASE_URL and SUPABASE_KEY',
-      entries: []
-    });
-  }
-
-  try {
-    const limit = Number(req.query.limit) || 1000; // Supabase API limit
-    const offset = Number(req.query.offset) || 0;
-
-    console.log(`[/sync/all] Fetching entries: offset=${offset}, limit=${limit}`);
-
-    const response = await axios.get(
-      `${SUPABASE_URL}/rest/v1/cache_entries?select=key,count,timestamp&limit=${limit}&offset=${offset}`,
-      {
-        headers: {
-          'apikey': SUPABASE_KEY,
-          'Authorization': `Bearer ${SUPABASE_KEY}`,
-          'Prefer': 'count=exact'
-        },
-        validateStatus: () => true
-      }
-    );
-
-    if (response.status === 404) {
-      return res.status(503).json({ error: 'Table cache_entries missing', entries: [] });
-    }
-
-    console.log(`[/sync/all] Returning ${response.data?.length || 0} entries (status: ${response.status})`);
-
-    return res.status(response.status).json({
-      success: response.status >= 200 && response.status < 300,
-      entries: response.data || []
-    });
-  } catch (error) {
-    console.error('Error in /sync/all:', error.message);
-    return res.status(500).json({ error: 'Internal server error', entries: [] });
-  }
+app.get('/sync/all', (req, res) => {
+  const minVersion = '3.0.6';
+  console.warn('[/sync/all] Deprecated endpoint called. Returning 410 Gone.');
+  return res.status(410).json({
+    error: 'This endpoint is deprecated and disabled to reduce egress.',
+    message: 'Use POST /sync/pull with specific cardIds.',
+    minVersion
+  });
 });
 
 /**

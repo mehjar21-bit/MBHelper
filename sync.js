@@ -169,10 +169,12 @@ export const syncCacheFromServer = async (cardIds = []) => {
     for (let i = 0; i < cardIds.length; i += PULL_BATCH_SIZE) {
       const batch = cardIds.slice(i, i + PULL_BATCH_SIZE);
       
+      const manifest = chrome.runtime.getManifest();
       const response = await fetch(`${SYNC_SERVER_URL}/sync/pull`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          'X-Extension-Version': manifest.version,
         },
         body: JSON.stringify({ cardIds: batch })
       });
@@ -242,97 +244,10 @@ export const syncCacheFromServer = async (cardIds = []) => {
 /**
  * Полная загрузка всех записей из сервера (для нового пользователя)
  */
-export const syncCachePullAll = async (limit = 500000) => {
-  if (!isExtensionContextValid()) return;
-
-  try {
-    log(`PULL ALL from server ${SYNC_SERVER_URL} (limit=${limit}) ...`);
-
-    let allEntries = [];
-    let offset = 0;
-    const batchSize = 1000; // Supabase API limit
-    
-    // Запрашиваем данные порциями, пока не получим все
-    while (offset < limit) {
-      log(`Fetching batch at offset ${offset}...`);
-      
-      const response = await fetch(`${SYNC_SERVER_URL}/sync/all?limit=${batchSize}&offset=${offset}`, {
-        method: 'GET'
-      });
-
-      if (!response.ok) {
-        logError(`Failed to pull cache batch at offset ${offset}: ${response.status}`);
-        break;
-      }
-
-      const { entries } = await response.json();
-
-      if (!entries || entries.length === 0) {
-        log(`No more data from server at offset ${offset}`);
-        break;
-      }
-
-      allEntries = allEntries.concat(entries);
-      log(`Fetched ${entries.length} entries, total: ${allEntries.length}`);
-      
-      // Если получили меньше чем batchSize, значит это последняя порция
-      if (entries.length < batchSize) {
-        break;
-      }
-      
-      offset += batchSize;
-    }
-
-    if (allEntries.length === 0) {
-      log('No data from server (pull all)');
-      return;
-    }
-
-    log(`Total fetched from server: ${allEntries.length} entries`);
-
-    // Получаем текущие локальные данные для сравнения
-    const localData = await chrome.storage.local.get(null);
-    
-    const storageUpdate = {};
-    let updated = 0;
-    let skipped = 0;
-    let tooOld = 0;
-    
-    const MAX_AGE = 30 * 24 * 60 * 60 * 1000; // Не принимаем данные старше 30 дней
-    const now = Date.now();
-    
-    allEntries.forEach(entry => {
-      const { key, count, timestamp } = entry;
-      const localEntry = localData[key];
-      
-      // Проверяем возраст серверных данных
-      const age = now - timestamp;
-      if (age > MAX_AGE) {
-        // Данные слишком старые, пропускаем
-        tooOld++;
-        return;
-      }
-      
-      // Обновляем только если серверные данные свежее или локальных нет
-      if (!localEntry || !localEntry.timestamp || localEntry.timestamp < timestamp) {
-        storageUpdate[key] = { count, timestamp };
-        updated++;
-      } else {
-        skipped++;
-      }
-    });
-
-    if (Object.keys(storageUpdate).length > 0) {
-      await chrome.storage.local.set(storageUpdate);
-    }
-    
-    if (tooOld > 0) {
-      log(`⚠️ Rejected ${tooOld} entries (older than 30 days)`);
-    }
-    log(`Pull-all: updated ${updated}, skipped ${skipped} (local fresher) entries`);
-  } catch (error) {
-    logError('Error pulling all cache from server:', error);
-  }
+export const syncCachePullAll = async () => {
+  // Полная выгрузка отключена для снижения трафика и стоимости
+  log('PULL ALL is disabled. Use targeted sync via syncCacheFromServer.');
+  return;
 };
 
 /**
@@ -391,12 +306,47 @@ export const handleSyncAlarm = async (alarm) => {
       logError('Error in PUSH alarm:', error);
     }
   } else if (alarm.name === 'syncPull') {
-    log('⬇️ PULL alarm triggered - fetching data from server');
+    log('⬇️ PULL alarm triggered - refreshing stale entries only');
     try {
-      await syncCachePullAll();
-      log('PULL completed via alarm');
+      // Собираем список «протухших» карточек из локального кэша
+      const allData = await chrome.storage.local.get(null);
+      const now = Date.now();
+
+      const ownersTTL = 30 * 24 * 60 * 60 * 1000; // 30 дней
+      const wishlistTTLDefault = 7 * 24 * 60 * 60 * 1000; // 7 дней
+      const wishlistTTLZero = 24 * 60 * 60 * 1000; // 1 день, если count=0
+
+      const staleIdsSet = new Set();
+
+      for (const [key, value] of Object.entries(allData)) {
+        if (!value || !value.timestamp) continue;
+        const isOwner = key.startsWith('owners_');
+        const isWishlist = key.startsWith('wishlist_');
+        if (!isOwner && !isWishlist) continue;
+
+        const cardId = key.split('_')[1];
+        if (!cardId) continue;
+
+        let ttl = isOwner ? ownersTTL : (value.count === 0 ? wishlistTTLZero : wishlistTTLDefault);
+        const age = now - value.timestamp;
+        if (age > ttl) {
+          staleIdsSet.add(cardId);
+        }
+      }
+
+      // Ограничиваем количество карточек для PULL, чтобы снизить egress
+      const MAX_PULL_CARDS = 200;
+      const staleIds = Array.from(staleIdsSet).slice(0, MAX_PULL_CARDS);
+
+      if (staleIds.length === 0) {
+        log('No stale cards found for limited PULL');
+        return;
+      }
+
+      await syncCacheFromServer(staleIds);
+      log(`Limited PULL completed for ${staleIds.length} cards`);
     } catch (error) {
-      logError('Error in PULL alarm:', error);
+      logError('Error in limited PULL alarm:', error);
     }
   }
 };
