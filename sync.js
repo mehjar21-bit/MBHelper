@@ -1,9 +1,9 @@
 import { log, logError, logWarn, isExtensionContextValid } from './utils.js';
 import { SYNC_SERVER_URL } from './config.js';
 const SYNC_BATCH_SIZE = 100; // Отправляем по 100 записей за раз
-const PUSH_INTERVAL = 2 * 60 * 60 * 1000; // PUSH каждые 2 часа (только вручную)
+const PUSH_INTERVAL = 2 * 60 * 60 * 1000; // PUSH каждые 2 часа
 const PULL_INTERVAL = 24 * 60 * 60 * 1000; // PULL каждые 24 часа (фоновое обновление)
-const AUTO_PUSH_THRESHOLD = 999999; // Автоматический PUSH отключен (порог нереально высокий)
+const AUTO_PUSH_THRESHOLD = 1000; // Автоматический PUSH при накоплении 1000+ записей
 
 /**
  * Проверяет количество накопленных данных и автоматически запускает PUSH если >= порога
@@ -371,11 +371,11 @@ export const compareAndUpdateCache = async (key, serverData) => {
  * Инициализирует периодическую синхронизацию
  */
 export const initPeriodicSync = () => {
-  // АВТОМАТИЧЕСКАЯ СИНХРОНИЗАЦИЯ ОТКЛЮЧЕНА
-  // Пользователи используют только кнопку ручной синхронизации
-  // PULL один раз в сутки для обновления кеша
-  chrome.alarms.create('syncPull', { periodInMinutes: 1440 }); // 24 часа
-  log('Periodic sync initialized: PULL every 24h (manual sync via button recommended)');
+  // PUSH каждые 2 часа
+  chrome.alarms.create('syncPush', { periodInMinutes: 120 });
+  // PULL каждые 24 часа для фонового обновления
+  chrome.alarms.create('syncPull', { periodInMinutes: 1440 });
+  log('Periodic sync initialized: PUSH every 2h, PULL every 24h');
 };
 
 /**
@@ -383,13 +383,16 @@ export const initPeriodicSync = () => {
  */
 export const handleSyncAlarm = async (alarm) => {
   if (alarm.name === 'syncPush') {
-    log('⬆️ PUSH alarm disabled - use manual sync button');
-    // Автоматический PUSH отключен
-    return;
-  } else if (alarm.name === 'syncPull') {
-    log('⬇️ PULL alarm triggered - fetching data from server');
+    log('⬆️ PUSH alarm triggered - sending local data to server');
     try {
-      // Используем легкий PULL вместо PULL ALL для экономии трафика
+      await syncCacheToServer();
+      log('PUSH completed via alarm');
+    } catch (error) {
+      logError('Error in PUSH alarm:', error);
+    }
+  } else if (alarm.name === 'syncPull') {
+    log('⬇️ PULL alarm triggered - updating existing cache from server');
+    try {
       const allData = await chrome.storage.local.get(null);
       const cardIds = Object.keys(allData)
         .filter(key => key.startsWith('owners_') || key.startsWith('wishlist_'))
