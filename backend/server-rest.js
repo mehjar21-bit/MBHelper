@@ -306,31 +306,48 @@ app.post('/sync/pull', async (req, res) => {
   try {
     const { cardIds } = req.body;
 
-    if (!Array.isArray(cardIds) || cardIds.length === 0) {
-      return res.status(400).json({ error: 'Invalid cardIds format' });
+    if (!Array.isArray(cardIds)) {
+      return res.status(400).json({ error: 'Invalid cardIds format - must be array' });
     }
 
-    // Формируем список ключей
-    const keys = [];
-    cardIds.forEach(id => {
-      keys.push(`owners_${id}`);
-      keys.push(`wishlist_${id}`);
-    });
+    let response;
 
-    console.log(`[PULL] Fetching ${keys.length} keys for ${cardIds.length} cards`);
+    // Если cardIds пустой — отдаём ВСЕ записи (для первой синхронизации)
+    if (cardIds.length === 0) {
+      console.log(`[PULL] Fetching ALL entries (first sync)`);
+      response = await axios.get(
+        `${SUPABASE_URL}/rest/v1/cache_entries?select=key,count,timestamp&limit=5000`,
+        {
+          headers: {
+            'apikey': SUPABASE_KEY,
+            'Authorization': `Bearer ${SUPABASE_KEY}`
+          },
+          timeout: 30000
+        }
+      );
+    } else {
+      // Формируем список ключей
+      const keys = [];
+      cardIds.forEach(id => {
+        keys.push(`owners_${id}`);
+        keys.push(`wishlist_${id}`);
+      });
 
-    // Запрашиваем данные через Supabase REST API с использованием .in() фильтра
-    const keysStr = keys.join(',');
-    const response = await axios.get(
-      `${SUPABASE_URL}/rest/v1/cache_entries?key=in.(${keysStr})&select=key,count,timestamp`,
-      {
-        headers: {
-          'apikey': SUPABASE_KEY,
-          'Authorization': `Bearer ${SUPABASE_KEY}`
-        },
-        timeout: 15000
-      }
-    );
+      console.log(`[PULL] Fetching ${keys.length} keys for ${cardIds.length} cards`);
+
+      // Запрашиваем данные через Supabase REST API с использованием .in() фильтра
+      const keysStr = keys.join(',');
+      response = await axios.get(
+        `${SUPABASE_URL}/rest/v1/cache_entries?key=in.(${keysStr})&select=key,count,timestamp`,
+        {
+          headers: {
+            'apikey': SUPABASE_KEY,
+            'Authorization': `Bearer ${SUPABASE_KEY}`
+          },
+          timeout: 15000
+        }
+      );
+    }
 
     console.log(`[PULL] Found ${response.data?.length || 0} entries`);
 

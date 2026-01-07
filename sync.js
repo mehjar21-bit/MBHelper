@@ -154,11 +154,10 @@ export const syncCacheFromServer = async (cardIds = []) => {
   if (!isExtensionContextValid()) return;
 
   try {
-    log(`Fetching fresh cache from server ${SYNC_SERVER_URL} ...`);
-
     if (cardIds.length === 0) {
-      log('No card IDs specified for sync pull');
-      return;
+      log(`Fetching ALL cache from server (first sync) ${SYNC_SERVER_URL} ...`);
+    } else {
+      log(`Fetching fresh cache from server ${SYNC_SERVER_URL} ...`);
     }
 
     // Разбиваем на батчи по 100 ID (чтобы не перегружать сервер)

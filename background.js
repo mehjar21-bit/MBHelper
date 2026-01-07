@@ -144,10 +144,13 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     if (message.action === 'triggerSync') {
         log('Manual sync triggered from interface');
         
-        Promise.all([
-          syncCacheToServer(),
-          // Получаем все card IDs из локального хранилища для точечного PULL
-          chrome.storage.local.get(null).then(allData => {
+        (async () => {
+          try {
+            // PUSH локальных изменений
+            await syncCacheToServer();
+            
+            // Получаем все card IDs из локального хранилища для точечного PULL
+            const allData = await chrome.storage.local.get(null);
             const cardIds = Object.keys(allData)
               .filter(key => key.startsWith('owners_') || key.startsWith('wishlist_'))
               .map(key => {
@@ -160,19 +163,20 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
             if (uniqueCardIds.length > 0) {
               log(`Syncing ${uniqueCardIds.length} card IDs from interface`);
-              return syncCacheFromServer(uniqueCardIds);
+              await syncCacheFromServer(uniqueCardIds);
+            } else {
+              // Если локального кэша нет — делаем полный PULL
+              log('No local card IDs found, performing full pull');
+              await syncCacheFromServer([]);
             }
-            // Если нет локальных данных — пропускаем PULL (без полного дампа)
-            log('No local card IDs found, skipping full pull');
-            return Promise.resolve();
-          })
-        ]).then(() => {
-          log('Manual sync completed');
-          sendResponse({ success: true, message: 'Sync completed' });
-        }).catch(error => {
-          logError('Manual sync error:', error);
-          sendResponse({ success: false, error: error.message });
-        });
+            
+            log('Manual sync completed');
+            sendResponse({ success: true, message: 'Sync completed' });
+          } catch (error) {
+            logError('Manual sync error:', error);
+            sendResponse({ success: false, error: error.message });
+          }
+        })();
         
         return true; // Указываем что ответ будет асинхронным
     }
