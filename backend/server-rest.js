@@ -306,50 +306,15 @@ app.post('/sync/pull', async (req, res) => {
 });
 
 /**
- * GET /sync/all - Получить все записи (с лимитом)
+ * GET /sync/all - DEPRECATED - Используйте /sync/pull
  */
-app.get('/sync/all', async (req, res) => {
-  if (!dbConnected) {
-    console.warn('[/sync/all] Database not connected, returning empty array');
-    return res.status(200).json({
-      success: false,
-      error: 'Database not connected. Check SUPABASE_URL and SUPABASE_KEY',
-      entries: []
-    });
-  }
-
-  try {
-    const limit = Number(req.query.limit) || 1000; // Supabase API limit
-    const offset = Number(req.query.offset) || 0;
-
-    console.log(`[/sync/all] Fetching entries: offset=${offset}, limit=${limit}`);
-
-    const response = await axios.get(
-      `${SUPABASE_URL}/rest/v1/cache_entries?select=key,count,timestamp&limit=${limit}&offset=${offset}`,
-      {
-        headers: {
-          'apikey': SUPABASE_KEY,
-          'Authorization': `Bearer ${SUPABASE_KEY}`,
-          'Prefer': 'count=exact'
-        },
-        validateStatus: () => true
-      }
-    );
-
-    if (response.status === 404) {
-      return res.status(503).json({ error: 'Table cache_entries missing', entries: [] });
-    }
-
-    console.log(`[/sync/all] Returning ${response.data?.length || 0} entries (status: ${response.status})`);
-
-    return res.status(response.status).json({
-      success: response.status >= 200 && response.status < 300,
-      entries: response.data || []
-    });
-  } catch (error) {
-    console.error('Error in /sync/all:', error.message);
-    return res.status(500).json({ error: 'Internal server error', entries: [] });
-  }
+app.get('/sync/all', (req, res) => {
+  console.log('[/sync/all] Endpoint blocked - deprecated');
+  return res.status(410).json({ 
+    error: 'This endpoint is deprecated. Please update your extension to v3.0.6 or later.',
+    message: 'Use POST /sync/pull instead',
+    minVersion: '3.0.6'
+  });
 });
 
 /**
