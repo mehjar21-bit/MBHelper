@@ -2,6 +2,7 @@ require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
 const axios = require('axios');
+const rateLimit = require('express-rate-limit');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -306,15 +307,40 @@ app.post('/sync/pull', async (req, res) => {
 });
 
 /**
- * GET /sync/all - DEPRECATED - Используйте /sync/pull
+ * GET /sync/all - Получить все записи (строгий rate limit: 1 раз в 10 минут)
  */
-app.get('/sync/all', (req, res) => {
-  console.log('[/sync/all] Endpoint blocked - deprecated');
-  return res.status(410).json({ 
-    error: 'This endpoint is deprecated. Please update your extension to v3.0.6 or later.',
-    message: 'Use POST /sync/pull instead',
-    minVersion: '3.0.6'
-  });
+const syncAllLimiter = rateLimit({
+  windowMs: 10 * 60 * 1000, // 10 минут
+  max: 1, // только 1 запрос
+  message: { error: 'Sync all is limited to once per 10 minutes. Please wait.' },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+app.get('/sync/all', syncAllLimiter, async (req, res) => {
+  try {
+    const limit = Math.min(Number(req.query.limit) || 1000, 10000);
+    const offset = Number(req.query.offset) || 0;
+
+    const { data, error } = await supabase
+      .from('cache_entries')
+      .select('key, count, timestamp')
+      .order('updated_at', { ascending: false })
+      .range(offset, offset + limit - 1);
+
+    if (error) {
+      console.error('[/sync/all] Error:', error);
+      return res.status(500).json({ error: 'Failed to fetch data' });
+    }
+
+    res.json({
+      success: true,
+      entries: data || []
+    });
+  } catch (error) {
+    console.error('[/sync/all] Exception:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
 });
 
 /**
