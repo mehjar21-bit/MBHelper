@@ -2,8 +2,6 @@ require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
 const axios = require('axios');
-const compression = require('compression');
-const rateLimit = require('express-rate-limit');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -36,41 +34,21 @@ app.use(cors({
 // Явно отвечаем на preflight
 app.options('*', cors());
 
-app.use(express.json({ limit: '1mb' }));
+app.use(express.json({ limit: '10mb' }));
 
-// Включаем gzip сжатие для экономии трафика
-app.use(compression());
-
-// Trust proxy для Railway/Heroku (чтобы express-rate-limit корректно работал)
-app.set('trust proxy', 1);
-
-// Rate limiting: максимум 200 запросов/час по маршрутам синхронизации
-const limiter = rateLimit({
-  windowMs: 60 * 60 * 1000,
-  max: 200,
-  message: { error: 'Too many requests, please try again later' },
-  standardHeaders: true,
-  legacyHeaders: false,
+// Простое логирование запросов
+app.use((req, res, next) => {
+  const origin = req.headers.origin || 'n/a';
+  console.log(`[REQ] ${req.method} ${req.url} origin=${origin}`);
+  next();
 });
-app.use('/sync/', limiter);
-
-// Простое логирование запросов (только в dev)
-if (process.env.NODE_ENV !== 'production') {
-  app.use((req, res, next) => {
-    const origin = req.headers.origin || 'n/a';
-    console.log(`[REQ] ${req.method} ${req.url} origin=${origin}`);
-    next();
-  });
-}
 
 let dbConnected = false;
 
 // Инициализация БД (проверяем доступность REST и таблицы)
 const initializeDatabase = async () => {
   try {
-    if (process.env.NODE_ENV !== 'production') {
-      console.log('Attempting to connect to Supabase...');
-    }
+    console.log('Attempting to connect to Supabase...');
     
     const response = await axios.get(
       `${SUPABASE_URL}/rest/v1/cache_entries?select=key&limit=1`,
@@ -113,16 +91,6 @@ const initializeDatabase = async () => {
  * POST /sync/push - Отправить данные на сервер
  */
 app.post('/sync/push', async (req, res) => {
-  // Проверка версии расширения
-  const clientVersion = req.headers['x-extension-version'];
-  const minVersion = '3.0.6';
-  if (clientVersion && clientVersion < minVersion) {
-    return res.status(426).json({
-      error: 'Extension version too old. Please update to v' + minVersion + ' or later.',
-      minVersion,
-      currentVersion: clientVersion,
-    });
-  }
   if (!dbConnected) {
     return res.status(503).json({ 
       error: 'Database not connected',
@@ -289,16 +257,6 @@ app.post('/sync/push', async (req, res) => {
  * POST /sync/pull - Получить данные для карт
  */
 app.post('/sync/pull', async (req, res) => {
-  // Проверка версии расширения
-  const clientVersion = req.headers['x-extension-version'];
-  const minVersion = '3.0.6';
-  if (!clientVersion || clientVersion < minVersion) {
-    return res.status(426).json({
-      error: 'Extension version too old. Please update to v' + minVersion + ' or later.',
-      minVersion,
-      currentVersion: clientVersion,
-    });
-  }
   if (!dbConnected) {
     return res.status(503).json({ 
       error: 'Database not connected',
@@ -309,48 +267,31 @@ app.post('/sync/pull', async (req, res) => {
   try {
     const { cardIds } = req.body;
 
-    if (!Array.isArray(cardIds)) {
-      return res.status(400).json({ error: 'Invalid cardIds format - must be array' });
+    if (!Array.isArray(cardIds) || cardIds.length === 0) {
+      return res.status(400).json({ error: 'Invalid cardIds format' });
     }
 
-    let response;
+    // Формируем список ключей
+    const keys = [];
+    cardIds.forEach(id => {
+      keys.push(`owners_${id}`);
+      keys.push(`wishlist_${id}`);
+    });
 
-    // Если cardIds пустой — отдаём ВСЕ записи (для первой синхронизации)
-    if (cardIds.length === 0) {
-      console.log(`[PULL] Fetching ALL entries (first sync)`);
-      response = await axios.get(
-        `${SUPABASE_URL}/rest/v1/cache_entries?select=key,count,timestamp&limit=5000`,
-        {
-          headers: {
-            'apikey': SUPABASE_KEY,
-            'Authorization': `Bearer ${SUPABASE_KEY}`
-          },
-          timeout: 30000
-        }
-      );
-    } else {
-      // Формируем список ключей
-      const keys = [];
-      cardIds.forEach(id => {
-        keys.push(`owners_${id}`);
-        keys.push(`wishlist_${id}`);
-      });
+    console.log(`[PULL] Fetching ${keys.length} keys for ${cardIds.length} cards`);
 
-      console.log(`[PULL] Fetching ${keys.length} keys for ${cardIds.length} cards`);
-
-      // Запрашиваем данные через Supabase REST API с использованием .in() фильтра
-      const keysStr = keys.join(',');
-      response = await axios.get(
-        `${SUPABASE_URL}/rest/v1/cache_entries?key=in.(${keysStr})&select=key,count,timestamp`,
-        {
-          headers: {
-            'apikey': SUPABASE_KEY,
-            'Authorization': `Bearer ${SUPABASE_KEY}`
-          },
-          timeout: 15000
-        }
-      );
-    }
+    // Запрашиваем данные через Supabase REST API с использованием .in() фильтра
+    const keysStr = keys.join(',');
+    const response = await axios.get(
+      `${SUPABASE_URL}/rest/v1/cache_entries?key=in.(${keysStr})&select=key,count,timestamp`,
+      {
+        headers: {
+          'apikey': SUPABASE_KEY,
+          'Authorization': `Bearer ${SUPABASE_KEY}`
+        },
+        timeout: 15000
+      }
+    );
 
     console.log(`[PULL] Found ${response.data?.length || 0} entries`);
 
@@ -365,16 +306,50 @@ app.post('/sync/pull', async (req, res) => {
 });
 
 /**
- * GET /sync/all - DEPRECATED. Используйте POST /sync/pull.
+ * GET /sync/all - Получить все записи (с лимитом)
  */
-app.get('/sync/all', (req, res) => {
-  const minVersion = '3.0.6';
-  console.warn('[/sync/all] Deprecated endpoint called. Returning 410 Gone.');
-  return res.status(410).json({
-    error: 'This endpoint is deprecated and disabled to reduce egress.',
-    message: 'Use POST /sync/pull with specific cardIds.',
-    minVersion
-  });
+app.get('/sync/all', async (req, res) => {
+  if (!dbConnected) {
+    console.warn('[/sync/all] Database not connected, returning empty array');
+    return res.status(200).json({
+      success: false,
+      error: 'Database not connected. Check SUPABASE_URL and SUPABASE_KEY',
+      entries: []
+    });
+  }
+
+  try {
+    const limit = Number(req.query.limit) || 1000; // Supabase API limit
+    const offset = Number(req.query.offset) || 0;
+
+    console.log(`[/sync/all] Fetching entries: offset=${offset}, limit=${limit}`);
+
+    const response = await axios.get(
+      `${SUPABASE_URL}/rest/v1/cache_entries?select=key,count,timestamp&limit=${limit}&offset=${offset}`,
+      {
+        headers: {
+          'apikey': SUPABASE_KEY,
+          'Authorization': `Bearer ${SUPABASE_KEY}`,
+          'Prefer': 'count=exact'
+        },
+        validateStatus: () => true
+      }
+    );
+
+    if (response.status === 404) {
+      return res.status(503).json({ error: 'Table cache_entries missing', entries: [] });
+    }
+
+    console.log(`[/sync/all] Returning ${response.data?.length || 0} entries (status: ${response.status})`);
+
+    return res.status(response.status).json({
+      success: response.status >= 200 && response.status < 300,
+      entries: response.data || []
+    });
+  } catch (error) {
+    console.error('Error in /sync/all:', error.message);
+    return res.status(500).json({ error: 'Internal server error', entries: [] });
+  }
 });
 
 /**
