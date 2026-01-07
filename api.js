@@ -72,7 +72,12 @@ const getUserCount = async (type, cardId, retries = 2) => {
       const cached = await chrome.storage.local.get([cacheKey]).then(r => r[cacheKey]);
       if (cached) {
         const age = Date.now() - cached.timestamp;
-        const isOld = age > 7 * 24 * 60 * 60 * 1000; // Старше 7 дней
+        // Динамический TTL: используем сохранённый ttl, иначе дефолт (owners=30 дней, wishlist=7 дней)
+        const defaultTtl = (type === 'owners')
+          ? 30 * 24 * 60 * 60 * 1000
+          : 7 * 24 * 60 * 60 * 1000;
+        const effectiveTtl = typeof cached.ttl === 'number' && cached.ttl > 0 ? cached.ttl : defaultTtl;
+        const isOld = age > effectiveTtl; 
         
         // Если данные старые - запускаем фоновое обновление
         if (isOld) {
@@ -180,11 +185,16 @@ const getUserCount = async (type, cardId, retries = 2) => {
             }
         }
 
-      const timestamp = Date.now();
-      if (isExtensionContextValid() && (total > 0 || (type === 'wishlist' && total === 0))) {
-          let ttl = 7 * 24 * 60 * 60 * 1000; // 7 дней по умолчанию
-          if (type === 'wishlist' && total === 0) {
-              ttl = 24 * 60 * 60 * 1000; // 1 день для wishlist с 0
+        const timestamp = Date.now();
+        if (isExtensionContextValid() && (total > 0 || (type === 'wishlist' && total === 0))) {
+          // Устанавливаем TTL: owners = 30 дней; wishlist = 7 дней, но 1 день если 0 владельцев
+          let ttl;
+          if (type === 'owners') {
+            ttl = 30 * 24 * 60 * 60 * 1000;
+          } else if (type === 'wishlist' && total === 0) {
+            ttl = 24 * 60 * 60 * 1000; // 1 день
+          } else {
+            ttl = 7 * 24 * 60 * 60 * 1000; // 7 дней
           }
           try {
             await chrome.storage.local.set({ [cacheKey]: { count: total, timestamp, ttl } });
