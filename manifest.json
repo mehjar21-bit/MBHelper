@@ -1,13 +1,12 @@
 {
   "manifest_version": 3,
   "name": "MangaBuff Helper",
-  "version": "3.0.6",
+  "version": "3.1.0",
   "description": "Показывает количество желающих и владельцев карт на MangaBuff",
   "permissions": [
     "storage",
     "scripting",
-    "downloads",
-    "alarms"
+    "downloads"
   ],
   "host_permissions": [
     "https://mangabuff.ru/*"

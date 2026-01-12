@@ -1,4 +1,4 @@
-import { syncCacheToServer, syncCacheFromServer, syncCachePullAll, initPeriodicSync, handleSyncAlarm } from './sync.js';
+import { syncPullAll } from './sync.js';
 
 const BASE_URL = 'https://mangabuff.ru';
 const log = (message, ...args) => console.log(`[Background] ${message}`, ...args);
@@ -144,12 +144,16 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     if (message.action === 'triggerSync') {
         log('Manual sync triggered from interface');
         
-        // Сначала загрузить полный кеш с сервера (rate limited - 1 раз в 10 мин)
-        syncCachePullAll()
-          .then(() => syncCacheToServer())
-          .then(() => {
-            log('Manual sync completed');
-            sendResponse({ success: true, message: 'Sync completed' });
+        syncPullAll()
+          .then((result) => {
+            log('Manual sync completed:', result);
+            sendResponse({ 
+              success: true, 
+              message: 'Sync completed',
+              updated: result.updated,
+              skipped: result.skipped,
+              total: result.total
+            });
           })
           .catch(error => {
             logError('Manual sync error:', error);
@@ -164,20 +168,12 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return false;
 });
 
-// Инициализация периодической синхронизации при загрузке расширения
+// Логируем при установке (без автоматической синхронизации)
 chrome.runtime.onInstalled.addListener(() => {
-    log('Extension installed, initializing periodic sync...');
-    initPeriodicSync();
+    log('Extension installed. Use sync button to pull data from server.');
 });
 
-// Инициализация при запуске service worker (каждый раз при загрузке Chrome)
+// Логируем при запуске (без автоматической синхронизации)
 chrome.runtime.onStartup.addListener(() => {
-    log('Browser startup, initializing periodic sync...');
-    initPeriodicSync();
-});
-
-// Обработчик alarm для периодической синхронизации
-chrome.alarms.onAlarm.addListener((alarm) => {
-    log('Alarm triggered:', alarm.name);
-    handleSyncAlarm(alarm);
+    log('Browser startup. Sync available via interface button.');
 });

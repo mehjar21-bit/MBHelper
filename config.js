@@ -1,5 +1,6 @@
 export const BASE_URL = 'https://mangabuff.ru';
-export const SYNC_SERVER_URL = 'https://mbhelper-production.up.railway.app'; // Production Railway
+export const SYNC_SERVER_URL = 'https://mbhelperv31-production.up.railway.app';
+export const EXTENSION_VERSION = '3.1.0';
 export const LOG_PREFIX = '[MangaBuffExt]';
 export const MAX_CONCURRENT_REQUESTS = 5; 
 

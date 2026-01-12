@@ -177,78 +177,15 @@ app.get('/sync/all', (req, res) => {
 });
 
 /**
- * POST /scraper/push - Endpoint для скрейпера (защищён токеном)
+ * POST /scraper/push - DEPRECATED
+ * Скрейпер теперь пишет напрямую в Supabase PostgreSQL
  */
-app.post('/scraper/push', async (req, res) => {
-  if (!dbConnected) {
-    return res.status(503).json({ error: 'Database not connected' });
-  }
-
-  // Проверка токена скрейпера
-  const scraperToken = req.headers['x-scraper-token'];
-  if (scraperToken !== process.env.SCRAPER_TOKEN) {
-    return res.status(403).json({ error: 'Invalid scraper token' });
-  }
-
-  try {
-    const { entries } = req.body;
-
-    if (!Array.isArray(entries)) {
-      return res.status(400).json({ error: 'Invalid entries format' });
-    }
-
-    let updated = 0;
-    let inserted = 0;
-
-    for (const entry of entries) {
-      const { key, count, timestamp } = entry;
-
-      if (!key || count === undefined || !timestamp) {
-        continue;
-      }
-
-      try {
-        const updateResult = await pool.query(
-          `UPDATE cache_entries 
-           SET count = $1, timestamp = $2, updated_at = CURRENT_TIMESTAMP
-           WHERE key = $3 AND timestamp < $2
-           RETURNING id;`,
-          [count, timestamp, key]
-        );
-
-        if (updateResult.rows.length > 0) {
-          updated++;
-        } else {
-          const insertResult = await pool.query(
-            `INSERT INTO cache_entries (key, count, timestamp)
-             VALUES ($1, $2, $3)
-             ON CONFLICT (key) DO NOTHING
-             RETURNING id;`,
-            [key, count, timestamp]
-          );
-
-          if (insertResult.rows.length > 0) {
-            inserted++;
-          }
-        }
-      } catch (err) {
-        console.error(`Error processing entry ${key}:`, err);
-      }
-    }
-
-    // Инвалидируем кэш после обновления данных
-    cache.del('all_entries');
-
-    res.json({ 
-      success: true, 
-      updated, 
-      inserted,
-      message: `Processed ${entries.length} entries`
-    });
-  } catch (error) {
-    console.error('Error in /scraper/push:', error);
-    res.status(500).json({ error: 'Internal server error' });
-  }
+app.post('/scraper/push', (req, res) => {
+  res.status(410).json({ 
+    error: 'Endpoint deprecated',
+    message: 'Scraper now writes directly to Supabase. Update your scraper-config.json',
+    documentation: 'See SCRAPER_README.md'
+  });
 });
 
 /**
@@ -308,9 +245,9 @@ const startServer = async () => {
         console.log(`Database: ${dbConnected ? '✅ Connected' : '⚠️  Demo mode'}\n`);
         console.log('Available endpoints:');
         console.log('  GET  /sync/pull-all  - Get all cache data (cached 5 min)');
-        console.log('  POST /scraper/push   - Push data (scraper only)');
         console.log('  GET  /cache/stats    - Get statistics');
         console.log('  GET  /health         - Health check\n');
+        console.log('Note: Scraper writes directly to Supabase, /scraper/push is deprecated.');
       } else {
         console.log(`Server running on port ${PORT}`);
       }

@@ -3,38 +3,47 @@ import { initialContextState } from './config.js';
 const log = (msg, ...args) => console.log(`[Interface] ${msg}`, ...args);
 const logError = (msg, ...args) => console.error(`[Interface] ${msg}`, ...args);
 
+// Форматирует время последней синхронизации
+const formatLastSyncTime = (timestamp) => {
+  if (!timestamp) return 'Никогда';
+  
+  const now = Date.now();
+  const diff = now - timestamp;
+  
+  const minutes = Math.floor(diff / (1000 * 60));
+  const hours = Math.floor(diff / (1000 * 60 * 60));
+  const days = Math.floor(diff / (1000 * 60 * 60 * 24));
+  
+  if (minutes < 1) return 'Только что';
+  if (minutes < 60) return `${minutes} мин. назад`;
+  if (hours < 24) return `${hours} ч. назад`;
+  if (days === 1) return 'Вчера';
+  if (days < 7) return `${days} дн. назад`;
+  
+  const date = new Date(timestamp);
+  return date.toLocaleDateString('ru-RU');
+};
+
 // Функция для синхронизации (вызываем из service worker)
 const syncWithServer = async () => {
   try {
     log('Starting sync...');
     
-    // Получаем функции синхронизации из service worker
+    // Запрашиваем синхронизацию через service worker
     const response = await chrome.runtime.sendMessage({
       action: 'triggerSync'
     }).catch(() => null);
 
     if (response && response.success) {
-      log('Sync completed successfully');
-      return true;
+      log('Sync completed successfully:', response);
+      return response;
     } else {
-      // Если service worker не ответит, пытаемся напрямую через синхронизацию
-      log('Using direct sync approach...');
-      
-      // Получаем все данные из хранилища
-      const allData = await chrome.storage.local.get(null);
-      const cacheKeys = Object.keys(allData).filter(k => k.startsWith('owners_') || k.startsWith('wishlist_'));
-      
-      if (cacheKeys.length === 0) {
-        log('No cache data to sync');
-        return false;
-      }
-
-      log(`Syncing ${cacheKeys.length} entries`);
-      return true;
+      log('Sync failed:', response?.error || 'No response');
+      return null;
     }
   } catch (error) {
     logError('Sync error:', error);
-    return false;
+    return null;
   }
 };
 
@@ -196,6 +205,14 @@ document.addEventListener('DOMContentLoaded', () => {
     log('Settings loaded:', data);
   });
 
+  // Загружаем время последней синхронизации
+  chrome.storage.local.get('_lastSyncTime', data => {
+    const lastSyncEl = document.getElementById('lastSyncTime');
+    if (lastSyncEl) {
+      lastSyncEl.textContent = formatLastSyncTime(data._lastSyncTime);
+    }
+  });
+
   extensionEnabledEl.addEventListener('change', () => {
       toggleSettingsAvailability(extensionEnabledEl.checked);
   });
@@ -331,15 +348,21 @@ document.addEventListener('DOMContentLoaded', () => {
     try {
       const result = await syncWithServer();
       
-      if (result) {
-        log('Sync successful');
-        syncMessageEl.textContent = '✓ Данные синхронизированы!';
+      if (result && result.success) {
+        log('Sync successful:', result);
+        syncMessageEl.textContent = `✓ Синхронизировано! Обновлено: ${result.updated || 0}`;
         syncMessageEl.style.backgroundColor = 'rgba(76, 175, 80, 0.8)';
         syncMessageEl.classList.add('show');
-        setTimeout(() => syncMessageEl.classList.remove('show'), 2000);
+        setTimeout(() => syncMessageEl.classList.remove('show'), 3000);
+        
+        // Обновляем отображение времени последней синхронизации
+        const lastSyncEl = document.getElementById('lastSyncTime');
+        if (lastSyncEl) {
+          lastSyncEl.textContent = formatLastSyncTime(Date.now());
+        }
       } else {
-        log('Sync failed or no data');
-        syncMessageEl.textContent = '✗ Ошибка синхронизации или нет данных';
+        log('Sync failed:', result?.error);
+        syncMessageEl.textContent = '✗ ' + (result?.error || 'Ошибка синхронизации');
         syncMessageEl.style.backgroundColor = 'rgba(244, 67, 54, 0.8)';
         syncMessageEl.classList.add('show');
         setTimeout(() => syncMessageEl.classList.remove('show'), 3000);
