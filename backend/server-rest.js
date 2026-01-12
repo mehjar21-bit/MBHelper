@@ -306,9 +306,9 @@ app.post('/sync/pull', async (req, res) => {
 });
 
 /**
- * GET /sync/all - Получить все записи (с лимитом)
+ * GET /sync/all и /sync/pull-all - Получить все записи (с лимитом)
  */
-app.get('/sync/all', async (req, res) => {
+const handleSyncAll = async (req, res) => {
   if (!dbConnected) {
     console.warn('[/sync/all] Database not connected, returning empty array');
     return res.status(200).json({
@@ -319,7 +319,7 @@ app.get('/sync/all', async (req, res) => {
   }
 
   try {
-    const limit = Number(req.query.limit) || 1000; // Supabase API limit
+    const limit = Number(req.query.limit) || 10000; // Увеличил лимит
     const offset = Number(req.query.offset) || 0;
 
     console.log(`[/sync/all] Fetching entries: offset=${offset}, limit=${limit}`);
@@ -340,17 +340,22 @@ app.get('/sync/all', async (req, res) => {
       return res.status(503).json({ error: 'Table cache_entries missing', entries: [] });
     }
 
-    console.log(`[/sync/all] Returning ${response.data?.length || 0} entries (status: ${response.status})`);
+    const entries = response.data || [];
+    console.log(`[/sync/all] Returning ${entries.length} entries (status: ${response.status})`);
 
     return res.status(response.status).json({
       success: response.status >= 200 && response.status < 300,
-      entries: response.data || []
+      entries: entries,
+      count: entries.length
     });
   } catch (error) {
     console.error('Error in /sync/all:', error.message);
     return res.status(500).json({ error: 'Internal server error', entries: [] });
   }
-});
+};
+
+app.get('/sync/all', handleSyncAll);
+app.get('/sync/pull-all', handleSyncAll);
 
 /**
  * GET /cache/stats - Статистика кэша
