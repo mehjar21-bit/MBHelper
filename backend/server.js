@@ -27,11 +27,12 @@ app.use('/sync/', limiter);
 
 const PORT = process.env.PORT || 3000;
 
-// CORS конфиг
+// CORS конфиг - разрешаем все origin для chrome extensions
 app.use(cors({
-  origin: ['chrome-extension://*', 'http://localhost:3000'],
-  methods: ['GET', 'POST'],
-  allowedHeaders: ['Content-Type', 'X-Extension-Version', 'X-Scraper-Token']
+  origin: true, // Разрешить все origins (chrome-extension:// не поддерживает wildcard)
+  methods: ['GET', 'POST', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'X-Extension-Version', 'X-Scraper-Token'],
+  credentials: false
 }));
 
 app.use(express.json({ limit: '100kb' }));
