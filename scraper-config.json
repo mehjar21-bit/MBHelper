@@ -1,0 +1,32 @@
+{
+  "database": {
+    "url": "postgresql://postgres:3CRL6JGAJKGVQSQB@db.mgusmnddeiutqjpmdqfk.supabase.co:5432/postgres"
+  },
+  "scraping": {
+    "maxCardId": 332550,
+    "batchSize": 100,
+    "delayMin": 100,
+    "delayMax": 500,
+    "saveProgressEvery": 10,
+    "retryAttempts": 3,
+    "timeout": 30000
+  },
+  "accounts": [
+    {
+      "name": "account1",
+      "cookies": null,
+      "csrf": null,
+      "enabled": true
+    }
+  ],
+  "proxies": [
+    {
+      "url": "http://user:pass@host:port",
+      "enabled": false
+    }
+  ],
+  "workers": {
+    "count": 1,
+    "cardsPerWorker": 1000
+  }
+}

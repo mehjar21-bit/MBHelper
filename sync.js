@@ -16,8 +16,7 @@ export const syncPullAll = async () => {
     const response = await fetch(`${SYNC_SERVER_URL}/sync/pull-all`, {
       method: 'GET',
       headers: {
-        'Content-Type': 'application/json',
-        'X-Extension-Version': EXTENSION_VERSION
+        'Content-Type': 'application/json'
       }
     });
 
