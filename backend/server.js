@@ -1,4 +1,9 @@
 require('dotenv').config();
+
+// Принудительно IPv4 для совместимости с Railway
+const dns = require('dns');
+dns.setDefaultResultOrder('ipv4first');
+
 const express = require('express');
 const cors = require('cors');
 const compression = require('compression');
@@ -40,16 +45,14 @@ app.use(cors({
 
 app.use(express.json({ limit: '100kb' }));
 
-// PostgreSQL подключение (принудительно IPv4)
+// PostgreSQL подключение
 const dbUrl = process.env.DATABASE_URL || 'postgresql://user:password@localhost/mangabuff_cache';
 const pool = new Pool({
   connectionString: dbUrl,
   ssl: { rejectUnauthorized: false },
-  // Принудительно IPv4 для совместимости с Railway
-  family: 4,
-  max: 2, // Минимальный pool для экономии памяти
-  min: 0, // Не держать соединения когда нет запросов
-  idleTimeoutMillis: 10000, // Закрывать через 10 секунд
+  max: 2,
+  min: 0,
+  idleTimeoutMillis: 10000,
   connectionTimeoutMillis: 5000
 });
 
