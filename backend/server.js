@@ -8,6 +8,9 @@ const { Pool } = require('pg');
 
 const app = express();
 
+// Trust proxy для Railway (rate limiter)
+app.set('trust proxy', 1);
+
 // In-memory кэш: 5 минут TTL, проверка каждые 60 секунд
 const cache = new NodeCache({ stdTTL: 300, checkperiod: 60 });
 
@@ -37,10 +40,13 @@ app.use(cors({
 
 app.use(express.json({ limit: '100kb' }));
 
-// PostgreSQL подключение
+// PostgreSQL подключение (принудительно IPv4)
+const dbUrl = process.env.DATABASE_URL || 'postgresql://user:password@localhost/mangabuff_cache';
 const pool = new Pool({
-  connectionString: process.env.DATABASE_URL || 'postgresql://user:password@localhost/mangabuff_cache',
-  ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
+  connectionString: dbUrl,
+  ssl: { rejectUnauthorized: false },
+  // Принудительно IPv4 для совместимости с Railway
+  family: 4,
   max: 2, // Минимальный pool для экономии памяти
   min: 0, // Не держать соединения когда нет запросов
   idleTimeoutMillis: 10000, // Закрывать через 10 секунд
