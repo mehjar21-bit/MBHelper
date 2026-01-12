@@ -1,7 +1,7 @@
 /**
  * MangaBuff Scraper v2.0
  * Поддержка множества прокси и аккаунтов
- * Запись напрямую в Supabase PostgreSQL
+ * Запись в Supabase через REST API
  * 
  * Использование:
  *   node scraper-v2.js                    # Обычный запуск
@@ -15,7 +15,7 @@ const puppeteer = require('puppeteer');
 const fs = require('fs');
 const path = require('path');
 const { JSDOM } = require('jsdom');
-const { Pool } = require('pg');
+const axios = require('axios');
 
 // ==================== КОНФИГУРАЦИЯ ====================
 
@@ -24,11 +24,12 @@ const PROGRESS_FILE = 'scraper_progress.json';
 const ACCOUNTS_FILE = 'scraper-accounts.json';
 
 let config = {
-  database: {
-    url: 'postgresql://user:password@host:5432/database'
+  supabase: {
+    url: 'https://mgusmnddeiutqjpmdqfk.supabase.co',
+    key: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1ndXNtbmRkZWl1dHFqcG1kcWZrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjY4MDY1MjQsImV4cCI6MjA4MjM4MjUyNH0.kVqc7_aV0g4s9Begc2hq1_sQyINuSvUJEK3VCg1S5KA'
   },
   scraping: {
-    maxCardId: 328320,
+    maxCardId: 332550,
     batchSize: 100,
     delayMin: 100,
     delayMax: 500,
@@ -44,7 +45,6 @@ let config = {
 };
 
 let accounts = [];
-let pool = null;
 
 // ==================== УТИЛИТЫ ====================
 
@@ -175,82 +175,56 @@ async function getCount(page, cardId, type, workerId) {
   return -1;
 }
 
-// ==================== ЗАПИСЬ В SUPABASE ====================
+// ==================== ЗАПИСЬ В SUPABASE (REST API) ====================
 
-async function initDatabase() {
-  if (pool) return pool;
-  
-  pool = new Pool({
-    connectionString: config.database.url,
-    ssl: { rejectUnauthorized: false },
-    max: 5,
-    idleTimeoutMillis: 30000,
-    connectionTimeoutMillis: 10000
-  });
-
-  // Тест соединения
+async function testSupabaseConnection() {
   try {
-    const client = await pool.connect();
-    const result = await client.query('SELECT COUNT(*) FROM cache_entries');
-    log(null, `✔ Database connected. Total entries in DB: ${result.rows[0].count}`);
-    client.release();
-    return pool;
+    const response = await axios.get(
+      `${config.supabase.url}/rest/v1/cache_entries?select=key&limit=1`,
+      {
+        headers: {
+          'apikey': config.supabase.key,
+          'Authorization': `Bearer ${config.supabase.key}`
+        },
+        timeout: 10000
+      }
+    );
+    log(null, `✔ Supabase connected`);
+    return true;
   } catch (error) {
-    logError(null, 'Database connection failed:', error.message);
-    throw error;
+    logError(null, 'Supabase connection failed:', error.message);
+    return false;
   }
 }
 
 async function pushToDatabase(entries, workerId) {
   try {
-    if (!pool) await initDatabase();
-    
     log(workerId, `Saving ${entries.length} entries to Supabase...`);
     
-    let updated = 0;
-    let inserted = 0;
-    
-    // Batch upsert в таблицу cache_entries
-    for (const entry of entries) {
-      const { key, count, timestamp } = entry;
-      
-      // Сначала пробуем UPDATE (если запись новее)
-      const updateResult = await pool.query(`
-        UPDATE cache_entries 
-        SET count = $1, timestamp = $2, updated_at = CURRENT_TIMESTAMP
-        WHERE key = $3 AND timestamp < $2
-        RETURNING id
-      `, [count, timestamp, key]);
-
-      if (updateResult.rows.length > 0) {
-        updated++;
-      } else {
-        // Иначе INSERT ON CONFLICT
-        const insertResult = await pool.query(`
-          INSERT INTO cache_entries (key, count, timestamp)
-          VALUES ($1, $2, $3)
-          ON CONFLICT (key) DO NOTHING
-          RETURNING id
-        `, [key, count, timestamp]);
-        
-        if (insertResult.rows.length > 0) {
-          inserted++;
-        }
+    // Upsert через REST API
+    const response = await axios.post(
+      `${config.supabase.url}/rest/v1/cache_entries`,
+      entries.map(e => ({
+        key: e.key,
+        count: e.count,
+        timestamp: e.timestamp
+      })),
+      {
+        headers: {
+          'apikey': config.supabase.key,
+          'Authorization': `Bearer ${config.supabase.key}`,
+          'Content-Type': 'application/json',
+          'Prefer': 'resolution=merge-duplicates'  // Upsert
+        },
+        timeout: 30000
       }
-    }
+    );
     
-    log(workerId, `✔ DB Save OK: updated=${updated}, inserted=${inserted}`);
+    log(workerId, `✔ Saved ${entries.length} entries`);
     return true;
   } catch (error) {
-    logError(workerId, 'Error saving to database:', error.message);
+    logError(workerId, 'Error saving to Supabase:', error.response?.data || error.message);
     return false;
-  }
-}
-
-async function closeDatabase() {
-  if (pool) {
-    await pool.end();
-    log(null, 'Database connection closed');
   }
 }
 
@@ -473,11 +447,10 @@ async function main() {
     return;
   }
   
-  // Инициализируем подключение к БД
-  try {
-    await initDatabase();
-  } catch (error) {
-    logError(null, 'Cannot start without database connection');
+  // Проверяем подключение к Supabase
+  const connected = await testSupabaseConnection();
+  if (!connected) {
+    logError(null, 'Cannot start without Supabase connection');
     return;
   }
   
@@ -486,7 +459,7 @@ async function main() {
   
   log(null, '=== Starting Scraper ===');
   log(null, `Cards: ${fromId} to ${toId}`);
-  log(null, `Database: Supabase PostgreSQL`);  
+  log(null, `Database: Supabase REST API`);  
   log(null, `Workers: ${workerCount}`);
   log(null, `Accounts: ${enabledAccounts.length}`);
   log(null, `Proxies: ${config.proxies.filter(p => p.enabled).length}`);
@@ -508,14 +481,10 @@ async function main() {
   
   await Promise.all(workers);
   
-  // Закрываем подключение к БД
-  await closeDatabase();
-  
   log(null, '=== All workers completed ===');
 }
 
-main().catch(async err => {
+main().catch(err => {
   logError(null, 'Fatal error:', err);
-  await closeDatabase();
   process.exit(1);
 });

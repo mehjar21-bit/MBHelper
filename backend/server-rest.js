@@ -319,7 +319,7 @@ const handleSyncAll = async (req, res) => {
   }
 
   try {
-    const limit = Number(req.query.limit) || 10000; // Увеличил лимит
+    const limit = Math.min(Number(req.query.limit) || 1000, 1000); // Supabase REST API лимит 1000
     const offset = Number(req.query.offset) || 0;
 
     console.log(`[/sync/all] Fetching entries: offset=${offset}, limit=${limit}`);

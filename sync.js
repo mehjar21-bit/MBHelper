@@ -1,9 +1,10 @@
 import { log, logError, logWarn, isExtensionContextValid } from './utils.js';
 import { SYNC_SERVER_URL, EXTENSION_VERSION } from './config.js';
 
+const BATCH_SIZE = 1000; // Supabase REST API имеет жёсткий лимит 1000 записей
+
 /**
- * Получает ВСЕ данные с сервера одним запросом (для кнопки синхронизации)
- * Сервер кэширует ответ на 5 минут
+ * Получает ВСЕ данные с сервера с пагинацией
  */
 export const syncPullAll = async () => {
   if (!isExtensionContextValid()) {
@@ -13,26 +14,46 @@ export const syncPullAll = async () => {
   try {
     log(`📥 Fetching all data from server ${SYNC_SERVER_URL}/sync/pull-all ...`);
     
-    const response = await fetch(`${SYNC_SERVER_URL}/sync/pull-all`, {
-      method: 'GET',
-      headers: {
-        'Content-Type': 'application/json'
-      }
-    });
+    let allEntries = [];
+    let offset = 0;
+    let hasMore = true;
+    
+    // Загружаем все данные батчами
+    while (hasMore) {
+      const response = await fetch(`${SYNC_SERVER_URL}/sync/pull-all?limit=${BATCH_SIZE}&offset=${offset}`, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json'
+        }
+      });
 
-    if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}));
-      throw new Error(errorData.error || `Server error: ${response.status}`);
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || `Server error: ${response.status}`);
+      }
+
+      const { entries, count } = await response.json();
+      
+      if (!entries || entries.length === 0) {
+        hasMore = false;
+      } else {
+        allEntries = allEntries.concat(entries);
+        log(`📦 Batch ${Math.floor(offset / BATCH_SIZE) + 1}: received ${entries.length} entries`);
+        
+        if (entries.length < BATCH_SIZE) {
+          hasMore = false;
+        } else {
+          offset += BATCH_SIZE;
+        }
+      }
     }
 
-    const { entries, count, cached } = await response.json();
-
-    if (!entries || entries.length === 0) {
+    if (allEntries.length === 0) {
       log('No data from server');
       return { updated: 0, skipped: 0, total: 0 };
     }
 
-    log(`📦 Received ${count} entries from server (cached: ${cached})`);
+    log(`📦 Total received: ${allEntries.length} entries`);
 
     // Получаем текущие локальные данные для сравнения
     const localData = await chrome.storage.local.get(null);
@@ -45,7 +66,7 @@ export const syncPullAll = async () => {
     const MAX_AGE = 30 * 24 * 60 * 60 * 1000; // Не принимаем данные старше 30 дней
     const now = Date.now();
     
-    entries.forEach(entry => {
+    allEntries.forEach(entry => {
       const { key, count, timestamp } = entry;
       const localEntry = localData[key];
       
@@ -78,7 +99,7 @@ export const syncPullAll = async () => {
     
     log(`✅ Sync complete: ${updated} updated, ${skipped} skipped (local fresher)`);
     
-    return { updated, skipped, total: entries.length };
+    return { updated, skipped, total: allEntries.length };
   } catch (error) {
     logError('Error pulling data from server:', error);
     throw error;

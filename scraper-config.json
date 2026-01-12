@@ -1,0 +1,33 @@
+{
+  "supabase": {
+    "url": "https://mgusmnddeiutqjpmdqfk.supabase.co",
+    "key": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1ndXNtbmRkZWl1dHFqcG1kcWZrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjY4MDY1MjQsImV4cCI6MjA4MjM4MjUyNH0.kVqc7_aV0g4s9Begc2hq1_sQyINuSvUJEK3VCg1S5KA"
+  },
+  "scraping": {
+    "maxCardId": 332550,
+    "batchSize": 100,
+    "delayMin": 100,
+    "delayMax": 500,
+    "saveProgressEvery": 10,
+    "retryAttempts": 3,
+    "timeout": 30000
+  },
+  "accounts": [
+    {
+      "name": "account1",
+      "cookies": null,
+      "csrf": null,
+      "enabled": true
+    }
+  ],
+  "proxies": [
+    {
+      "url": "http://user:pass@host:port",
+      "enabled": false
+    }
+  ],
+  "workers": {
+    "count": 1,
+    "cardsPerWorker": 1000
+  }
+}
