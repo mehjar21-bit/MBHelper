@@ -3,17 +3,21 @@ const express = require('express');
 const cors = require('cors');
 const compression = require('compression');
 const rateLimit = require('express-rate-limit');
+const NodeCache = require('node-cache');
 const { Pool } = require('pg');
 
 const app = express();
 
+// In-memory кэш: 5 минут TTL, проверка каждые 60 секунд
+const cache = new NodeCache({ stdTTL: 300, checkperiod: 60 });
+
 // Включаем gzip сжатие для экономии трафика
 app.use(compression());
 
-// Rate limiting: максимум 200 запросов в час с одного IP
+// Rate limiting: максимум 50 запросов в час с одного IP (достаточно для ручной синхронизации)
 const limiter = rateLimit({
   windowMs: 60 * 60 * 1000, // 1 час
-  max: 200, // макс запросов
+  max: 50, // макс запросов
   message: { error: 'Too many requests, please try again later' },
   standardHeaders: true,
   legacyHeaders: false,
@@ -26,11 +30,11 @@ const PORT = process.env.PORT || 3000;
 // CORS конфиг
 app.use(cors({
   origin: ['chrome-extension://*', 'http://localhost:3000'],
-  methods: ['GET', 'POST', 'PUT'],
-  allowedHeaders: ['Content-Type']
+  methods: ['GET', 'POST'],
+  allowedHeaders: ['Content-Type', 'X-Extension-Version', 'X-Scraper-Token']
 }));
 
-app.use(express.json({ limit: '1mb' }));
+app.use(express.json({ limit: '100kb' }));
 
 // PostgreSQL подключение
 const pool = new Pool({
@@ -89,26 +93,101 @@ const initializeDatabase = async () => {
 // Endpoints
 
 /**
- * POST /sync/push - Получить и сохранить данные от расширений
+ * GET /sync/pull-all - Единственный endpoint для получения ВСЕХ данных
+ * Кэшируется на 5 минут чтобы 100 пользователей получили один ответ
  */
-app.post('/sync/push', async (req, res) => {
+app.get('/sync/pull-all', async (req, res) => {
   if (!dbConnected) {
     return res.status(503).json({ 
-      error: 'Database not connected. Configure DATABASE_URL in .env',
-      demo: true 
+      error: 'Database not connected',
+      entries: []
     });
   }
 
-  // Проверка версии расширения
-  const clientVersion = req.headers['x-extension-version'];
-  const minVersion = '3.0.6'; // Минимальная поддерживаемая версия
-  
-  if (clientVersion && clientVersion < minVersion) {
-    return res.status(426).json({ 
-      error: 'Extension version too old. Please update to v' + minVersion + ' or later.',
-      minVersion,
-      currentVersion: clientVersion
+  try {
+    // Проверяем кэш
+    const cachedData = cache.get('all_entries');
+    if (cachedData) {
+      console.log('📦 Serving from cache');
+      return res.json({
+        success: true,
+        entries: cachedData,
+        cached: true,
+        count: cachedData.length
+      });
+    }
+
+    // Получаем все записи из БД (не старше 30 дней)
+    const thirtyDaysAgo = Date.now() - (30 * 24 * 60 * 60 * 1000);
+    const result = await pool.query(
+      `SELECT key, count, timestamp 
+       FROM cache_entries 
+       WHERE timestamp > $1
+       ORDER BY timestamp DESC`,
+      [thirtyDaysAgo]
+    );
+
+    const entries = result.rows;
+    
+    // Сохраняем в кэш на 5 минут
+    cache.set('all_entries', entries);
+    
+    console.log(`📥 Fetched ${entries.length} entries from DB, cached for 5 min`);
+
+    res.json({
+      success: true,
+      entries,
+      cached: false,
+      count: entries.length
     });
+  } catch (error) {
+    console.error('Error in /sync/pull-all:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+/**
+ * POST /sync/push - ОТКЛЮЧЕНО (записи только через scraper)
+ */
+app.post('/sync/push', (req, res) => {
+  return res.status(410).json({ 
+    error: 'Push sync is disabled. Data is populated via scraper only.',
+    message: 'Use the sync button to pull data from server.'
+  });
+});
+
+/**
+ * POST /sync/pull - ОТКЛЮЧЕНО (используйте /sync/pull-all)
+ */
+app.post('/sync/pull', (req, res) => {
+  return res.status(410).json({ 
+    error: 'This endpoint is deprecated. Use GET /sync/pull-all instead.',
+    redirect: '/sync/pull-all'
+  });
+});
+
+/**
+ * GET /sync/all - ОТКЛЮЧЕНО (используйте /sync/pull-all)
+ */
+app.get('/sync/all', (req, res) => {
+  return res.status(410).json({ 
+    error: 'This endpoint is deprecated. Use GET /sync/pull-all instead.',
+    redirect: '/sync/pull-all'
+  });
+});
+
+/**
+ * POST /scraper/push - Endpoint для скрейпера (защищён токеном)
+ */
+app.post('/scraper/push', async (req, res) => {
+  if (!dbConnected) {
+    return res.status(503).json({ error: 'Database not connected' });
+  }
+
+  // Проверка токена скрейпера
+  const scraperToken = req.headers['x-scraper-token'];
+  if (scraperToken !== process.env.SCRAPER_TOKEN) {
+    return res.status(403).json({ error: 'Invalid scraper token' });
   }
 
   try {
@@ -125,12 +204,10 @@ app.post('/sync/push', async (req, res) => {
       const { key, count, timestamp } = entry;
 
       if (!key || count === undefined || !timestamp) {
-        console.warn('Skipping invalid entry:', entry);
         continue;
       }
 
       try {
-        // Пытаемся обновить
         const updateResult = await pool.query(
           `UPDATE cache_entries 
            SET count = $1, timestamp = $2, updated_at = CURRENT_TIMESTAMP
@@ -142,7 +219,6 @@ app.post('/sync/push', async (req, res) => {
         if (updateResult.rows.length > 0) {
           updated++;
         } else {
-          // Если не обновилось, пытаемся вставить
           const insertResult = await pool.query(
             `INSERT INTO cache_entries (key, count, timestamp)
              VALUES ($1, $2, $3)
@@ -160,6 +236,9 @@ app.post('/sync/push', async (req, res) => {
       }
     }
 
+    // Инвалидируем кэш после обновления данных
+    cache.del('all_entries');
+
     res.json({ 
       success: true, 
       updated, 
@@ -167,75 +246,17 @@ app.post('/sync/push', async (req, res) => {
       message: `Processed ${entries.length} entries`
     });
   } catch (error) {
-    console.error('Error in /sync/push:', error);
+    console.error('Error in /scraper/push:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
 
 /**
- * POST /sync/pull - Получить свежие данные для карт
- */
-app.post('/sync/pull', async (req, res) => {
-  if (!dbConnected) {
-    return res.status(503).json({ 
-      error: 'Database not connected',
-      entries: []
-    });
-  }
-
-  // Проверка версии расширения
-  const clientVersion = req.headers['x-extension-version'];
-  const minVersion = '3.0.6';
-  
-  if (!clientVersion || clientVersion < minVersion) {
-    return res.status(426).json({ 
-      error: 'Extension version too old. Please update to v' + minVersion + ' or later.',
-      minVersion,
-      currentVersion: clientVersion
-    });
-  }
-
-  try {
-    const { cardIds } = req.body;
-
-    if (!Array.isArray(cardIds) || cardIds.length === 0) {
-      return res.status(400).json({ error: 'Invalid cardIds format' });
-    }
-
-    // Формируем список ключей для поиска
-    const keys = [];
-    cardIds.forEach(id => {
-      keys.push(`owners_${id}`);
-      keys.push(`wishlist_${id}`);
-    });
-
-    const result = await pool.query(
-      `SELECT key, count, timestamp 
-       FROM cache_entries 
-       WHERE key = ANY($1)
-       ORDER BY updated_at DESC;`,
-      [keys]
-    );
-
-    res.json({
-      success: true,
-      entries: result.rows
-    });
-  } catch (error) {
-    console.error('Error in /sync/pull:', error);
-    res.status(500).json({ error: 'Internal server error' });
-  }
-});
-
-/**
- * GET /cache/stats - Получить статистику кэша
+ * GET /cache/stats - Статистика кэша
  */
 app.get('/cache/stats', async (req, res) => {
   if (!dbConnected) {
-    return res.status(503).json({ 
-      error: 'Database not connected',
-      stats: null
-    });
+    return res.status(503).json({ error: 'Database not connected' });
   }
 
   try {
@@ -243,49 +264,23 @@ app.get('/cache/stats', async (req, res) => {
       SELECT 
         COUNT(*) as total_entries,
         AVG(count) as avg_count,
-        MAX(timestamp) as latest_timestamp,
-        COUNT(DISTINCT SUBSTRING(key FROM 1 FOR POSITION('_' IN key) - 1)) as unique_types
+        MAX(timestamp) as latest_timestamp
       FROM cache_entries;
     `);
 
+    const cacheStats = cache.getStats();
+
     res.json({
       success: true,
-      stats: result.rows[0]
+      database: result.rows[0],
+      memoryCache: {
+        keys: cache.keys().length,
+        hits: cacheStats.hits,
+        misses: cacheStats.misses
+      }
     });
   } catch (error) {
     console.error('Error in /cache/stats:', error);
-    res.status(500).json({ error: 'Internal server error' });
-  }
-});
-
-/**
- * GET /sync/all - DEPRECATED - Используйте /sync/pull
- */
-app.get('/sync/all', (req, res) => {
-  return res.status(410).json({ 
-    error: 'This endpoint is deprecated. Please update your extension to v3.0.6 or later.',
-    message: 'Use POST /sync/pull instead'
-  });
-});
-
-/**
- * POST /cache/cleanup - Очистка старых записей
- */
-app.post('/cache/cleanup', async (req, res) => {
-  if (!dbConnected) {
-    return res.status(503).json({ error: 'Database not connected' });
-  }
-
-  try {
-    const thirtyDaysAgo = Date.now() - (30 * 24 * 60 * 60 * 1000);
-    const result = await pool.query('DELETE FROM cache_entries WHERE timestamp < $1 RETURNING id', [thirtyDaysAgo]);
-    
-    res.json({ 
-      success: true,
-      deleted: result.rowCount
-    });
-  } catch (error) {
-    console.error('Error in /cache/cleanup:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -297,6 +292,7 @@ app.get('/health', (req, res) => {
   res.json({ 
     status: dbConnected ? 'ok' : 'warning',
     database: dbConnected ? 'connected' : 'disconnected',
+    cacheKeys: cache.keys().length,
     timestamp: Date.now()
   });
 });
@@ -309,12 +305,12 @@ const startServer = async () => {
     app.listen(PORT, () => {
       if (process.env.NODE_ENV !== 'production') {
         console.log(`\n🚀 Cache server running on http://localhost:${PORT}`);
-        console.log(`Database: ${dbConnected ? '✅ Connected' : '⚠️  Demo mode (no database)'}\n`);
+        console.log(`Database: ${dbConnected ? '✅ Connected' : '⚠️  Demo mode'}\n`);
         console.log('Available endpoints:');
-        console.log('  POST /sync/push  - Send cache data');
-        console.log('  POST /sync/pull  - Get cache data');
-        console.log('  GET  /cache/stats - Get statistics');
-        console.log('  GET  /health     - Health check\n');
+        console.log('  GET  /sync/pull-all  - Get all cache data (cached 5 min)');
+        console.log('  POST /scraper/push   - Push data (scraper only)');
+        console.log('  GET  /cache/stats    - Get statistics');
+        console.log('  GET  /health         - Health check\n');
       } else {
         console.log(`Server running on port ${PORT}`);
       }
