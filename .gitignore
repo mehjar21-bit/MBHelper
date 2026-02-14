@@ -1,0 +1,36 @@
+﻿# Node
+node_modules/
+backend/node_modules/
+backend/.env
+
+# Build outputs
+**/dist/
+**/*.log
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Release archives
+MangaBuff-Helper-*.zip
+
+# Local env files
+.env
+.env.*.local
+.env.local
+
+# Scraper files (contain sensitive data and tokens)
+scraper*.js
+scraper-*.js
+scraper*.json
+scraper_*.json
+
+# Proxy and debug data
+proxy-results.json
+failed_cards.json
+scraper_blacklist.json
+
+# Puppeteer / Chrome user data
+user-data-dir/
+puppeteer_data/
+.chromium_download.lock

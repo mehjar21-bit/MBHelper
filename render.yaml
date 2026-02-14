@@ -1,0 +1,22 @@
+# Render.com Blueprint
+# Автоматическая конфигурация для деплоя MangaBuff Cache Server
+
+services:
+  - type: web
+    name: mangabuff-cache-server
+    runtime: node
+    region: frankfurt  # EU Central - выберите ближайший регион
+    plan: free
+    buildCommand: npm install
+    startCommand: npm start
+    rootDirectory: backend
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: SUPABASE_URL
+        sync: false  # Задайте вручную в Render Dashboard
+      - key: SUPABASE_KEY
+        sync: false  # Задайте вручную в Render Dashboard
+    healthCheckPath: /health
+    # Auto-deploy при push в main ветку
+    autoDeploy: true

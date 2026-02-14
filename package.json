@@ -1,0 +1,35 @@
+{
+    "name": "mangabuff-extension",
+    "version": "3.2.0",
+    "description": "Расширение для Mangabuff.ru, добавляющее информацию о желающих и владельцах карточек.",
+    "private": true,
+    "main": "main.js",
+    "scripts": {
+        "build": "webpack --config webpack.config.js",
+        "scrape": "node scraper.js",
+        "prepare": "husky install",
+        "retry-failed": "node scripts/retry_failed.js"
+    },
+    "keywords": [
+        "chrome",
+        "extension",
+        "mangabuff"
+    ],
+    "author": "",
+    "license": "ISC",
+    "devDependencies": {
+        "axios": "^1.13.2",
+        "https-proxy-agent": "^7.0.6",
+        "husky": "^9.1.7",
+        "jsdom": "^27.4.0",
+        "node-fetch": "^3.3.2",
+        "puppeteer": "^24.34.0",
+        "webpack": "^5.99.7",
+        "webpack-cli": "^5.1.4"
+    },
+    "dependencies": {
+        "dotenv": "^17.2.3",
+        "pg": "^8.17.2",
+        "socks-proxy-agent": "^8.0.5"
+    }
+}
