@@ -34,3 +34,10 @@ scraper_blacklist.json
 user-data-dir/
 puppeteer_data/
 .chromium_download.lock
+
+# Development and debug files
+debug/
+scripts/
+setup-multi-accounts.js
+SCRAPER_README.md
+SECURITY_NOTICE.md
