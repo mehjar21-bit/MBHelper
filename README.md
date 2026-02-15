@@ -206,7 +206,7 @@ node server-rest.js
 ### См. releases
 
 ## 🐛 Сообщить об ошибке
-[](https://t.me/MangaBuffHelper)
+https://t.me/MangaBuffHelper
 Нашли баг?
 t.me/MangaBuffHelper
 Или
