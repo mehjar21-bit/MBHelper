@@ -352,7 +352,7 @@ const handleSyncAll = async (req, res) => {
     const sixtyDaysAgo = Date.now() - (60 * 24 * 60 * 60 * 1000);
 
     const response = await axios.get(
-      `${SUPABASE_URL}/rest/v1/cache_entries?select=key,count,timestamp&timestamp=gt.${sixtyDaysAgo}&limit=${limit}&offset=${offset}`,
+      `${SUPABASE_URL}/rest/v1/cache_entries?select=key,count,timestamp&timestamp=gt.${sixtyDaysAgo}&order=timestamp.desc&limit=${limit}&offset=${offset}`,
       {
         headers: {
           'apikey': SUPABASE_KEY,
@@ -476,7 +476,7 @@ app.get('/debug/entries', async (req, res) => {
   }
   try {
     const response = await axios.get(
-      `${SUPABASE_URL}/rest/v1/cache_entries?select=key,count,timestamp,updated_at&limit=20`,
+      `${SUPABASE_URL}/rest/v1/cache_entries?select=key,count,timestamp,updated_at&order=timestamp.desc&limit=20`,
       {
         headers: {
           'apikey': SUPABASE_KEY,
