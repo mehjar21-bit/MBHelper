@@ -5,6 +5,7 @@
   "description": "Показывает количество желающих и владельцев карт на MangaBuff",
   "permissions": [
     "storage",
+    "unlimitedStorage",
     "scripting",
     "downloads"
   ],
