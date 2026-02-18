@@ -3,6 +3,8 @@ import { processCards } from './cardProcessor.js';
 import { getElements, waitForElements, log, logWarn, logError, debounce, cachedElements, isExtensionContextValid } from './utils.js';
 import { contextsSelectors, BASE_URL, initialContextState } from './config.js';
 import { contextState } from './main.js';
+import { addTextLabel, addCombinedPackLabel } from './domUtils.js';
+import { forceRefreshCard } from './api.js';
 
 // State for owner-direct-trade feature
 let ownerLinksObserver = null;
@@ -77,12 +79,10 @@ export const initUserCards = async () => {
     }, { passive: false });
   });
 
-   const initialShowWishlist = settings.alwaysShowWishlist || contextState.userCards?.wishlist;
-   if (initialShowWishlist) {
-       log('initUserCards: Initial wishlist processing needed.');
-       cachedElements.delete(contextsSelectors.userCards);
-       await processCards('userCards', settings);
-   }
+   // Always run initial processing once so metadata-only badges (например A+) are applied
+   log('initUserCards: Running initial processing (metadata badges + counters if enabled).');
+   cachedElements.delete(contextsSelectors.userCards);
+   await processCards('userCards', settings);
 };
 
 const handleUserCardContextMenu = async (e) => {
@@ -305,26 +305,35 @@ export const initPackPage = async () => {
   const currentPackState = contextState[context] || initialContextState[context];
 
   const processExistingCards = async () => {
-      if (settings.alwaysShowWishlist || currentPackState.wishlist) {
-          const initialCards = packContainer.querySelectorAll(contextsSelectors.pack);
-          if (initialCards.length > 0) {
-              cachedElements.delete(contextsSelectors.pack);
-              await processCards('pack', settings);
-          }
-      } else {
-           const existingLabels = packContainer.querySelectorAll('.wishlist-warning, .owners-count');
-           existingLabels.forEach(label => label.remove());
+      const initialCards = packContainer.querySelectorAll(contextsSelectors.pack);
+      if (initialCards.length > 0) {
+          // Скрываем все оригинальные метки .lootbox__card-meta
+          initialCards.forEach(card => {
+              const originalMeta = card.querySelector('.lootbox__card-meta');
+              if (originalMeta) originalMeta.style.display = 'none';
+          });
+          
+          cachedElements.delete(contextsSelectors.pack);
+          await processCards('pack', settings);
       }
   };
 
   await processExistingCards();
 
-  const observerCallback = debounce(async (mutations) => {
+  // Инициализируем текущий pack-id
+  let lastPackId = document.querySelector('.lootbox__row')?.getAttribute('data-pack-id') || null;
+  if (lastPackId) {
+      log(`PackPage: Initial pack-id: ${lastPackId}`);
+  }
+  
+  const observerCallback = async (mutations) => {
       if (!isExtensionContextValid()) {
           logWarn('PackPage: Observer callback skipped, extension context lost.');
           return;
       }
       let cardsChanged = false;
+      let packIdChanged = false;
+      
       for (const mutation of mutations) {
           if (mutation.type === 'childList') {
               if (Array.from(mutation.addedNodes).some(node => node.nodeType === 1 && node.matches?.(contextsSelectors.pack)) ||
@@ -338,29 +347,101 @@ export const initPackPage = async () => {
                    break;
               }
 
-          } else if (mutation.type === 'attributes' && (mutation.attributeName === 'data-id' || mutation.attributeName === 'class') && mutation.target.matches?.(contextsSelectors.pack)) {
-              cardsChanged = true;
-              break;
+          } else if (mutation.type === 'attributes') {
+              // Отслеживаем изменение data-pack-id у .lootbox__row (новый набор карт)
+              if (mutation.attributeName === 'data-pack-id' && mutation.target.matches?.('.lootbox__row')) {
+                  const newPackId = mutation.target.getAttribute('data-pack-id');
+                  if (newPackId && newPackId !== lastPackId) {
+                      log(`PackPage: data-pack-id changed: ${lastPackId} → ${newPackId}`);
+                      lastPackId = newPackId;
+                      packIdChanged = true;
+                      cardsChanged = true;
+                      break;
+                  }
+              }
+              // Отслеживаем изменения в самих карточках
+              if ((mutation.attributeName === 'data-id' || mutation.attributeName === 'class') && mutation.target.matches?.(contextsSelectors.pack)) {
+                  cardsChanged = true;
+                  break;
+              }
           }
       }
 
       if (cardsChanged) {
           const currentSettings = await getSettings(); 
           const currentPackStateUpdated = contextState[context] || initialContextState[context]; 
-          const shouldShowLabels = currentSettings.alwaysShowWishlist || currentPackStateUpdated.wishlist;
 
-          if (shouldShowLabels) {
-              cachedElements.delete(contextsSelectors.pack);
-              await processCards(context, currentSettings); 
-          } else {
-              const cardItems = getElements(contextsSelectors.pack);
-              cardItems.forEach(item => {
-                  item.querySelector('.wishlist-warning')?.remove();
-                  item.querySelector('.owners-count')?.remove(); 
-              });
+          // Если это смена pack-id, ждём появления новых data-id у карточек
+          if (packIdChanged) {
+              log('PackPage: Waiting for new card IDs to appear...');
+              
+              // Собираем текущие ID карт (старые)
+              const getCardIds = () => {
+                  const cards = packContainer.querySelectorAll(contextsSelectors.pack);
+                  return Array.from(cards).map(c => c.getAttribute('data-id')).filter(Boolean);
+              };
+              
+              const oldIds = getCardIds();
+              log(`PackPage: Old card IDs: ${oldIds.join(', ')}`);
+              
+              // Ждём, пока ID изменятся (макс 5 секунд)
+              let attempts = 0;
+              const maxAttempts = 50; // 50 * 100ms = 5 секунд
+              
+              while (attempts < maxAttempts) {
+                  await new Promise(r => setTimeout(r, 100));
+                  const newIds = getCardIds();
+                  
+                  // Проверяем, изменились ли ID
+                  const idsChanged = newIds.length > 0 && 
+                      (newIds.length !== oldIds.length || 
+                       newIds.some((id, idx) => id !== oldIds[idx]));
+                  
+                  if (idsChanged) {
+                      log(`PackPage: New card IDs detected: ${newIds.join(', ')}`);
+                      break;
+                  }
+                  
+                  attempts++;
+              }
+              
+              if (attempts >= maxAttempts) {
+                  logWarn('PackPage: Timeout waiting for new card IDs');
+              }
           }
+
+          // Сбрасываем признак обработанности и удаляем старые метки у видимых карточек
+          try {
+              const cardItems = packContainer.querySelectorAll(contextsSelectors.pack);
+              cardItems.forEach(card => {
+                  const id = card.getAttribute('data-id') || card.getAttribute('data-card-id');
+                  card.removeAttribute('data-mb-processed');
+                  card.querySelector('.pack-combined-label')?.remove();
+                  
+                  // Скрываем оригинальную метку
+                  const originalMeta = card.querySelector('.lootbox__card-meta');
+                  if (originalMeta) originalMeta.style.display = 'none';
+
+                  if (!id) return;
+
+                  // Показываем временный placeholder (комбинированная метка)
+                  const showWishlist = currentSettings.alwaysShowWishlist || currentPackStateUpdated.wishlist;
+                  const showOwners = currentSettings.alwaysShowOwners || currentPackStateUpdated.owners;
+                  
+                  const placeholderData = {};
+                  if (showWishlist) placeholderData.wishlist = '…';
+                  if (showOwners) placeholderData.owners = '…';
+                  placeholderData.tooltip = 'Загрузка…';
+                  
+                  addCombinedPackLabel(card, placeholderData, 'pack');
+              });
+          } catch (e) { /* ignore */ }
+          
+          // Перезапускаем стандартную обработку
+          cachedElements.delete(contextsSelectors.pack);
+          await processCards(context, currentSettings);
       }
-  }, 300); 
+  }; 
 
   if (!packContainer._extensionObserver) {
       const observer = new MutationObserver(observerCallback);
@@ -368,7 +449,7 @@ export const initPackPage = async () => {
           childList: true, 
           subtree: true,   
           attributes: true, 
-          attributeFilter: ['data-id', 'class'] 
+          attributeFilter: ['data-id', 'class', 'data-pack-id'] 
       });
       packContainer._extensionObserver = observer; 
       log('PackPage: Setup observer for pack container');
@@ -583,11 +664,17 @@ export const initTradeOfferFilters = async () => {
         const addedLabels = Array.from(mutation.addedNodes).some(node => 
           node.classList?.contains('wishlist-warning') || 
           node.classList?.contains('owners-count') ||
+          node.classList?.contains('available-animation') ||
+          node.classList?.contains('lootbox-level') ||
+          node.classList?.contains('lootbox-mine') ||
           node.classList?.contains('manual-refresh-btn')
         );
         const removedLabels = Array.from(mutation.removedNodes).some(node => 
           node.classList?.contains('wishlist-warning') || 
           node.classList?.contains('owners-count') ||
+          node.classList?.contains('available-animation') ||
+          node.classList?.contains('lootbox-level') ||
+          node.classList?.contains('lootbox-mine') ||
           node.classList?.contains('manual-refresh-btn')
         );
         

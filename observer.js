@@ -60,10 +60,11 @@ const observeNode = (targetNode, context, targetSelector, observerCreatedCallbac
         // Раннамя проверка: если счетчики не нужны, игнорируем мутации
         const currentSettings = await getSettings();
         const needsProcessingEarly = (contextState[context]?.wishlist || currentSettings.alwaysShowWishlist)
-                                   || (contextState[context]?.owners || currentSettings.alwaysShowOwners);
+                                   || (contextState[context]?.owners || currentSettings.alwaysShowOwners)
+                                   || (currentSettings.showAvailableAnimation === undefined ? true : currentSettings.showAvailableAnimation);
         
         if (!needsProcessingEarly) {
-            return; // Счетчики не активны, не обрабатываем изменения
+            return; // Счетчики/метки не активны, не обрабатываем изменения
         }
 
         let cardListChanged = false;
@@ -79,11 +80,19 @@ const observeNode = (targetNode, context, targetSelector, observerCreatedCallbac
                     (!hasAddedNodes || Array.from(mutation.addedNodes).every(node => 
                         node.classList?.contains('wishlist-warning') || 
                         node.classList?.contains('owners-count') ||
+                        node.classList?.contains('available-animation') ||
+                        node.classList?.contains('lootbox-level') ||
+                        node.classList?.contains('lootbox-mine') ||
+                        node.classList?.contains('pack-combined-label') ||
                         node.classList?.contains('manual-refresh-btn')
                     )) && 
                     (!hasRemovedNodes || Array.from(mutation.removedNodes).every(node => 
                         node.classList?.contains('wishlist-warning') || 
                         node.classList?.contains('owners-count') ||
+                        node.classList?.contains('available-animation') ||
+                        node.classList?.contains('lootbox-level') ||
+                        node.classList?.contains('lootbox-mine') ||
+                        node.classList?.contains('pack-combined-label') ||
                         node.classList?.contains('manual-refresh-btn')
                     ));
                 

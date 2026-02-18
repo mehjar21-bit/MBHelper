@@ -1,6 +1,6 @@
 export const BASE_URL = 'https://mangabuff.ru';
 export const SYNC_SERVER_URL = 'https://mangabuff-cache-server.onrender.com';
-export const EXTENSION_VERSION = '3.2.0';
+export const EXTENSION_VERSION = '3.2.1';
 export const LOG_PREFIX = '[MangaBuffExt]';
 export const MAX_CONCURRENT_REQUESTS = 5; 
 
@@ -62,13 +62,10 @@ export const getCurrentContext = () => {
   for (const [pattern, context] of Object.entries(contextsMap)) {
     const regex = new RegExp(`^${pattern}$`);
     if (context === 'marketRequestCreate' && path === '/market/requests/create') {
-      console.log(`${LOG_PREFIX} Detected context: ${context}`);
       return context;
     } else if (regex.test(path)) {
-      console.log(`${LOG_PREFIX} Detected context: ${context}`);
       return context;
     }
   }
-  console.log(`${LOG_PREFIX} No context detected for path: ${path}`);
   return null;
 };

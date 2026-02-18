@@ -36,7 +36,7 @@ const cleanupExtensionFeatures = () => {
     });
     log('Removed dynamic buttons.');
 
-    const oldLabels = document.querySelectorAll('.wishlist-warning, .owners-count');
+    const oldLabels = document.querySelectorAll('.wishlist-warning, .owners-count, .available-animation, .lootbox-level, .lootbox-mine, .pack-combined-label');
     oldLabels.forEach(label => label.remove());
     log(`Removed ${oldLabels.length} labels.`);
 
@@ -112,11 +112,13 @@ const initPage = async () => {
             // Проверяем, нужно ли показывать счетчики (глобальная или контекстная настройка)
             const shouldShowWishlist = settings.alwaysShowWishlist || contextState[context]?.wishlist;
             const shouldShowOwners = settings.alwaysShowOwners || contextState[context]?.owners;
-            const shouldProcessCards = shouldShowWishlist || shouldShowOwners;
+            const shouldShowAnimation = settings.showAvailableAnimation === undefined ? true : settings.showAvailableAnimation;
+            const shouldProcessCards = shouldShowWishlist || shouldShowOwners || shouldShowAnimation;
             
             log(`[DEBUG] shouldProcessCards check for ${context}:`, {
                 alwaysShowWishlist: settings.alwaysShowWishlist,
                 alwaysShowOwners: settings.alwaysShowOwners,
+                showAvailableAnimation: shouldShowAnimation,
                 contextWishlist: contextState[context]?.wishlist,
                 contextOwners: contextState[context]?.owners,
                 shouldProcessCards
@@ -210,7 +212,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             if (settings.extensionEnabled) {
                 const context = getCurrentContext();
                 if (context && contextsSelectors[context]) {
-                   const oldLabels = document.querySelectorAll('.wishlist-warning, .owners-count');
+                   const oldLabels = document.querySelectorAll('.wishlist-warning, .owners-count, .available-animation, .lootbox-level, .lootbox-mine, .pack-combined-label');
                    oldLabels.forEach(label => label.remove());
                    log(`Removed ${oldLabels.length} old labels.`);
                    log('Reprocessing context after cache clear...');
@@ -218,10 +220,11 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                    const effectiveState = { ...(initialContextState[context] || {}), ...currentState };
                    contextState = { ...contextState, [context]: effectiveState };
                    
-                   // Проверяем, нужно ли показывать счетчики
+                   // Проверяем, нужно ли показывать счетчики или метки анимации
                    const shouldShowWishlist = settings.alwaysShowWishlist || contextState[context]?.wishlist;
                    const shouldShowOwners = settings.alwaysShowOwners || contextState[context]?.owners;
-                   const shouldProcessCards = shouldShowWishlist || shouldShowOwners;
+                   const shouldShowAnimation = settings.showAvailableAnimation === undefined ? true : settings.showAvailableAnimation;
+                   const shouldProcessCards = shouldShowWishlist || shouldShowOwners || shouldShowAnimation;
                    
                    if (context === 'userCards') { initUserCards(); }
                    else if (['tradeOffer', 'remelt', 'market', 'split', 'deckCreate', 'marketCreate', 'marketRequestCreate', 'auctions'].includes(context)) {
@@ -257,7 +260,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                 }
             } else {
                  log('Cache cleared, but extension is globally disabled. No reprocessing needed.');
-                 const oldLabels = document.querySelectorAll('.wishlist-warning, .owners-count');
+                 const oldLabels = document.querySelectorAll('.wishlist-warning, .owners-count, .available-animation, .lootbox-level, .lootbox-mine, .pack-combined-label');
                  oldLabels.forEach(label => label.remove());
             }
         }).catch(error => logError('Error getting settings during cache clear:', error));
@@ -284,7 +287,7 @@ chrome.storage.onChanged.addListener(async (changes, namespace) => {
             }
         } else {
             const changedKeys = Object.keys(changes);
-            const relevantKeys = ['wishlistStyle', 'wishlistWarning', 'alwaysShowWishlist', 'alwaysShowOwners', 'userContextStates'];
+            const relevantKeys = ['wishlistStyle', 'wishlistWarning', 'alwaysShowWishlist', 'alwaysShowOwners', 'showAvailableAnimation', 'userContextStates'];
             const otherSettingsChanged = changedKeys.some(key => relevantKeys.includes(key));
 
             if (otherSettingsChanged) {

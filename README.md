@@ -2,7 +2,7 @@
 
 Расширение для браузеров, которое добавляет полезные функции на сайт [MangaBuff.ru](https://mangabuff.ru) — отображение количества желающих и владельцев карт, облачная синхронизация кэша между устройствами.
 
-[![Version](https://img.shields.io/badge/version-3.2.0-blue.svg)](https://github.com/yourusername/mbhelper)
+[![Version](https://img.shields.io/badge/version-3.2.2-blue.svg)](https://github.com/yourusername/mbhelper)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
 ## ✨ Основные возможности

@@ -538,4 +538,9 @@ body.style-3 .tooltip-icon { color: #777; }
     position: relative;
 }
 
+/* Hide original lootbox card meta on pack pages (replaced with combined horizontal label) */
+.lootbox__card-meta {
+    display: none !important;
+}
+
 /* Trade button styles removed - site now has native trade buttons */

@@ -139,6 +139,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const wishlistWarningValueEl = document.getElementById('wishlistWarningValue');
   const alwaysShowWishlistEl = document.getElementById('alwaysShowWishlist');
   const alwaysShowOwnersEl = document.getElementById('alwaysShowOwners');
+  const showAvailableAnimationEl = document.getElementById('showAvailableAnimation');
   const stealthModeEl = document.getElementById('stealthMode');
 
   const saveBtn = document.getElementById('save');
@@ -156,18 +157,19 @@ document.addEventListener('DOMContentLoaded', () => {
   const styleButtons = document.querySelectorAll('.style-btn');
   const contextCheckboxes = document.querySelectorAll('#contextSettingsGrid input[type="checkbox"]');
 
-  if (!extensionEnabledEl || !wishlistStyleEl || !wishlistWarningEl || !wishlistWarningValueEl || !alwaysShowWishlistEl || !alwaysShowOwnersEl || !stealthModeEl || !saveBtn || !saveSpinner || !clearCacheBtn || !clearCacheSpinner || !syncCacheBtn || !syncCacheSpinner || !exportCacheBtn || !importCacheInput || !importCacheBtn || !savedMessageEl || !syncMessageEl || styleButtons.length === 0 || !document.getElementById('saveIcon') || !document.getElementById('saveText')) {
+  if (!extensionEnabledEl || !wishlistStyleEl || !wishlistWarningEl || !wishlistWarningValueEl || !alwaysShowWishlistEl || !alwaysShowOwnersEl || !showAvailableAnimationEl || !stealthModeEl || !saveBtn || !saveSpinner || !clearCacheBtn || !clearCacheSpinner || !syncCacheBtn || !syncCacheSpinner || !exportCacheBtn || !importCacheInput || !importCacheBtn || !savedMessageEl || !syncMessageEl || styleButtons.length === 0 || !document.getElementById('saveIcon') || !document.getElementById('saveText')) {
     logError('One or more required DOM elements not found!');
     return;
   }
 
-  const settingsKeys = ['extensionEnabled', 'wishlistStyle', 'wishlistWarning', 'alwaysShowWishlist', 'alwaysShowOwners', 'stealthMode', 'userContextStates'];
+  const settingsKeys = ['extensionEnabled', 'wishlistStyle', 'wishlistWarning', 'alwaysShowWishlist', 'alwaysShowOwners', 'showAvailableAnimation', 'stealthMode', 'userContextStates'];
   chrome.storage.sync.get(settingsKeys, data => {
     const savedEnabled = data.extensionEnabled !== undefined ? data.extensionEnabled : true;
     const savedStyle = data.wishlistStyle || 'style-1';
     const savedWarning = data.wishlistWarning !== undefined ? data.wishlistWarning : 10;
     const savedAlwaysWishlist = data.alwaysShowWishlist || false;
     const savedAlwaysOwners = data.alwaysShowOwners || false;
+    const savedShowAnimation = data.showAvailableAnimation !== undefined ? data.showAvailableAnimation : true;
     const savedStealthMode = data.stealthMode !== undefined ? data.stealthMode : true;
     const savedContextStates = data.userContextStates || {};
 
@@ -177,6 +179,7 @@ document.addEventListener('DOMContentLoaded', () => {
     wishlistWarningValueEl.textContent = savedWarning;
     alwaysShowWishlistEl.checked = savedAlwaysWishlist;
     alwaysShowOwnersEl.checked = savedAlwaysOwners;
+    showAvailableAnimationEl.checked = savedShowAnimation;
     stealthModeEl.checked = savedStealthMode;
     body.className = savedStyle;
     updateSliderTrack(savedStyle, savedWarning, wishlistWarningEl.min, wishlistWarningEl.max);
@@ -262,6 +265,7 @@ document.addEventListener('DOMContentLoaded', () => {
       wishlistWarning: wishlistWarning,
       alwaysShowWishlist: alwaysShowWishlistEl.checked,
       alwaysShowOwners: alwaysShowOwnersEl.checked,
+      showAvailableAnimation: showAvailableAnimationEl.checked,
       stealthMode: stealthModeEl.checked
     };
 

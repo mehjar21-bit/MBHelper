@@ -6,6 +6,7 @@ const defaultSettings = {
   wishlistStyle: 'style-1',
   alwaysShowWishlist: false,
   alwaysShowOwners: false,
+  showAvailableAnimation: true,
   stealthMode: true
 };
 

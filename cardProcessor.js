@@ -1,7 +1,7 @@
 ﻿// cardProcessor.js (СЫ v4 - Always Show)
 import { isExtensionContextValid, getElements, log, logWarn, logError } from './utils.js';
 import { getWishlistCount, getOwnersCount, forceRefreshCard } from './api.js';
-import { addTextLabel, addRefreshButton } from './domUtils.js';
+import { addTextLabel, addRefreshButton, addCombinedPackLabel } from './domUtils.js';
 import { contextsSelectors } from './config.js';
 import { contextState } from './main.js';
 
@@ -53,10 +53,19 @@ export const processCards = async (context, settings) => {
       const isProcessed = item.getAttribute('data-mb-processed') === 'true';
       const hasWishlistLabel = item.querySelector('.wishlist-warning') !== null;
       const hasOwnersLabel = item.querySelector('.owners-count') !== null;
+      const hasAvailableAnimationLabel = item.querySelector('.available-animation') !== null;
+      // Расширенная проверка: ищем признак анимации в ближайшем wrapper, в атрибутах и в классах самой карточки
+      const classAttr = (item.getAttribute && item.getAttribute('class')) || '';
+      const hasAvailableAnimationMeta = !!(
+        item.closest('.manga-cards__item-wrapper--available-animation') ||
+        /available-animation/.test(classAttr) ||
+        item.getAttribute('data-anim')
+      );
       
       if (isProcessed && 
           (!showWishlist || hasWishlistLabel) && 
-          (!showOwners || hasOwnersLabel)) {
+          (!showOwners || hasOwnersLabel) &&
+          (!hasAvailableAnimationMeta || hasAvailableAnimationLabel || !settings.showAvailableAnimation)) {
         return; // Уже обработана, пропускаем
       }
 
@@ -89,6 +98,10 @@ export const processCards = async (context, settings) => {
 
       item.querySelector('.wishlist-warning')?.remove();
       item.querySelector('.owners-count')?.remove();
+      item.querySelector('.available-animation')?.remove();
+      item.querySelector('.lootbox-level')?.remove();
+      item.querySelector('.lootbox-mine')?.remove();
+      item.querySelector('.pack-combined-label')?.remove();
 
       // Добавляем кнопку обновления
       addRefreshButton(item, cardId, async (id) => {
@@ -119,53 +132,127 @@ export const processCards = async (context, settings) => {
               opacity: 1
             }, context);
           }
+
+          // Показываем метку A+ при ручном обновлении, если включено в настройках
+          if (settings.showAvailableAnimation) {
+            const hasAvailableAnimationMetaRefresh = !!(item.closest('.manga-cards__item-wrapper--available-animation') || item.getAttribute('data-anim'));
+            if (hasAvailableAnimationMetaRefresh) {
+              const animPosition = (showWishlist && showOwners) ? 'bottom' : (showWishlist ? 'middle' : 'top');
+              addTextLabel(item, 'available-animation', 'A+', 'Доступна анимация', animPosition, 'anim', { opacity: 1 }, context);
+            }
+          }
         }
       });
 
-      const tasks = [];
+      // Для pack-контекста используем комбинированную горизонтальную метку
+      if (context === 'pack') {
+          const packData = {};
+          const tasks = [];
 
-      if (showWishlist) {
-          tasks.push(
-              getWishlistCount(cardId).then(data => {
-                  if (!item.isConnected) return;
-                  const count = data?.count ?? 0;
-                  const isOld = data?.isOld ?? false;
-                  const position = (showOwners && context !== 'userCards') ? 'top' : 'top';
-                  
-                  // Добавляем индикатор для старых данных
-                  const displayText = isOld ? `${count} ⏱️` : `${count}`;
-                  const age = isOld ? Math.floor((Date.now() - data.timestamp) / (24 * 60 * 60 * 1000)) : 0;
-                  const tooltipText = isOld ? `Хотят: ${count} (данные ${age} дн. назад)` : `Хотят: ${count}`;
-                  
-                  addTextLabel(item, 'wishlist-warning', displayText, tooltipText, position, 'wishlist', {
-                      color: count >= settings.wishlistWarning ? '#FFA500' : '#00FF00',
-                      opacity: isOld ? 0.8 : 1
-                  }, context);
-              }).catch(error => logError(`Error getting wishlist count for card ${cardId} in ${context}:`, error))
-          );
+          // Собираем wishlist
+          if (showWishlist) {
+              tasks.push(
+                  getWishlistCount(cardId).then(data => {
+                      if (!item.isConnected) return;
+                      packData.wishlist = data?.count ?? 0;
+                      packData.wishlistOld = data?.isOld ?? false;
+                      packData.wishlistWarning = settings.wishlistWarning;
+                  }).catch(error => logError(`Error getting wishlist count for card ${cardId}:`, error))
+              );
+          }
+
+          // Собираем owners
+          if (showOwners) {
+              tasks.push(
+                  getOwnersCount(cardId).then(data => {
+                      if (!item.isConnected) return;
+                      packData.owners = data?.count ?? 0;
+                      packData.ownersOld = data?.isOld ?? false;
+                  }).catch(error => logError(`Error getting owners count for card ${cardId}:`, error))
+              );
+          }
+
+          await Promise.all(tasks);
+
+          // Извлекаем level и mine из .lootbox__card-pill
+          try {
+              const pill = item.querySelector('.lootbox__card-pill');
+              if (pill) {
+                  const levelEl = pill.querySelector('[data-type="level"]');
+                  const mineEl = pill.querySelector('[data-type="mine"]');
+
+                  if (levelEl) {
+                      packData.level = levelEl.textContent.trim();
+                  }
+
+                  if (mineEl) {
+                      const mineText = mineEl.textContent.replace(/[^0-9+]/g, '').trim();
+                      if (mineText) {
+                          packData.mine = mineText;
+                      }
+                  }
+              }
+          } catch (e) { /* ignore */ }
+
+          // Добавляем A+ если есть анимация
+          if (hasAvailableAnimationMeta && settings.showAvailableAnimation) {
+              packData.anim = true;
+          }
+
+          // Добавляем комбинированную метку
+          addCombinedPackLabel(item, packData, context);
+
+      } else {
+          // Для остальных контекстов - отдельные метки
+          const tasks = [];
+
+          if (showWishlist) {
+              tasks.push(
+                  getWishlistCount(cardId).then(data => {
+                      if (!item.isConnected) return;
+                      const count = data?.count ?? 0;
+                      const isOld = data?.isOld ?? false;
+                      const position = (showOwners && context !== 'userCards') ? 'top' : 'top';
+                      
+                      const displayText = isOld ? `${count} ⏱️` : `${count}`;
+                      const age = isOld ? Math.floor((Date.now() - data.timestamp) / (24 * 60 * 60 * 1000)) : 0;
+                      const tooltipText = isOld ? `Хотят: ${count} (данные ${age} дн. назад)` : `Хотят: ${count}`;
+                      
+                      addTextLabel(item, 'wishlist-warning', displayText, tooltipText, position, 'wishlist', {
+                          color: count >= settings.wishlistWarning ? '#FFA500' : '#00FF00',
+                          opacity: isOld ? 0.8 : 1
+                      }, context);
+                  }).catch(error => logError(`Error getting wishlist count for card ${cardId} in ${context}:`, error))
+              );
+          }
+
+          if (showOwners) {
+              tasks.push(
+                  getOwnersCount(cardId).then(data => {
+                      if (!item.isConnected) return;
+                      const count = data?.count ?? 0;
+                      const isOld = data?.isOld ?? false;
+                      const position = showWishlist ? 'middle' : 'top';
+                      
+                      const displayText = isOld ? `${count} ⏱️` : `${count}`;
+                      const age = isOld ? Math.floor((Date.now() - data.timestamp) / (24 * 60 * 60 * 1000)) : 0;
+                      const tooltipText = isOld ? `Владеют: ${count} (данные ${age} дн. назад)` : `Владеют: ${count}`;
+                      
+                      addTextLabel(item, 'owners-count', displayText, tooltipText, position, 'owners', {
+                          opacity: isOld ? 0.8 : 1
+                      }, context);
+                  }).catch(error => logError(`Error getting owners count for card ${cardId} in ${context}:`, error))
+              );
+          }
+
+          await Promise.all(tasks);
+
+          // Добавляем метку A+ из метаданных
+          if (hasAvailableAnimationMeta && settings.showAvailableAnimation) {
+              const animPosition = (showWishlist && showOwners) ? 'bottom' : (showWishlist ? 'middle' : 'top');
+              addTextLabel(item, 'available-animation', 'A+', 'Доступна анимация', animPosition, 'anim', { opacity: 1 }, context);
+          }
       }
-
-      if (showOwners) {
-          tasks.push(
-              getOwnersCount(cardId).then(data => {
-                  if (!item.isConnected) return;
-                  const count = data?.count ?? 0;
-                  const isOld = data?.isOld ?? false;
-                  const position = showWishlist ? 'middle' : 'top';
-                  
-                  // Добавляем индикатор для старых данных
-                  const displayText = isOld ? `${count} ⏱️` : `${count}`;
-                  const age = isOld ? Math.floor((Date.now() - data.timestamp) / (24 * 60 * 60 * 1000)) : 0;
-                  const tooltipText = isOld ? `Владеют: ${count} (данные ${age} дн. назад)` : `Владеют: ${count}`;
-                  
-                  addTextLabel(item, 'owners-count', displayText, tooltipText, position, 'owners', {
-                      opacity: isOld ? 0.8 : 1
-                  }, context);
-              }).catch(error => logError(`Error getting owners count for card ${cardId} in ${context}:`, error))
-          );
-      }
-
-      await Promise.all(tasks);
       
       // Отмечаем карту как обработанную
       item.setAttribute('data-mb-processed', 'true');

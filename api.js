@@ -266,13 +266,7 @@ const getUserCount = async (type, cardId, retries = 2, forceNetwork = false) => 
 
             log(`Fetched (Optimized) and cached ${type} count for card ${cardId}: ${total} (TTL: ${ttl / (24 * 60 * 60 * 1000)} days)`);
 
-            // Проверяем накопленные данные для автоматического PUSH
-            try {
-              const { checkAndAutoPush } = await import('./sync.js');
-              checkAndAutoPush();
-            } catch (syncError) {
-              // Игнорируем ошибки проверки
-            }
+            // Автоматический push не выполняется (push disabled on server) — пропускаем
           } catch (storageError) {
             logError(`Error setting local storage for cache key ${cacheKey}:`, storageError);
           }
