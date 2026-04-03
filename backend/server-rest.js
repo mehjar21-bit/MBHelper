@@ -328,7 +328,7 @@ const handleSyncAll = async (req, res) => {
   }
 
   try {
-    const limit = Math.min(Number(req.query.limit) || 10000, 10000); // Supabase REST API лимит 10000
+    const limit = Math.min(Number(req.query.limit) || 100000, 100000); // Supabase REST API лимит 10000
     const offset = Number(req.query.offset) || 0;
 
     // Проверяем in-memory кэш ТОЛЬКО для первой страницы (offset=0)
